@@ -1,4 +1,4 @@
-FROM target/consensource:rust-base-1.38
+FROM target/consensource-rust:1.38
 
 COPY . /processor
 WORKDIR processor
