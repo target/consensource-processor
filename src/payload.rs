@@ -15,7 +15,7 @@ use common::proto::payload;
 use common::proto::request;
 use protobuf;
 
-#[derive(Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum Action {
     CreateAgent(payload::CreateAgentAction),
     CreateOrganization(payload::CreateOrganizationAction),
@@ -29,6 +29,7 @@ pub enum Action {
     AccreditCertifyingBody(payload::AccreditCertifyingBodyAction),
 }
 
+#[derive(PartialEq, Clone, Debug)]
 pub struct CertPayload {
     action: Action,
 }
@@ -78,8 +79,8 @@ macro_rules! reject_empty {
 impl CertPayload {
     /// Validates the payload data.
     /// It checks that all necessary fields have been passed for the specified
-    /// action and peforms some validation when possible.
-    /// This peforms all paylod validation that does not require fetching data from
+    /// action and performs some validation when possible.
+    /// This performs all payload validation that does not require fetching data from
     /// state.
     /// ```
     /// # Errors
@@ -286,4 +287,282 @@ where
             err
         ))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use common::proto::payload::*;
+
+    pub trait IntoBytes: Sized {
+        fn into_bytes(self) -> Result<Vec<u8>, protobuf::error::ProtobufError>;
+    }
+
+    impl IntoBytes for CertificateRegistryPayload {
+        fn into_bytes(self) -> Result<Vec<u8>, protobuf::error::ProtobufError> {
+            protobuf::Message::write_to_bytes(&self)
+        }
+    }
+
+    #[test]
+    // Test creating a UNSET Action executes correctly, should error
+    fn test_unset_action_creation_err() {
+        let mut new_payload = CertificateRegistryPayload::new();
+        new_payload.set_action(CertificateRegistryPayload_Action::UNSET_ACTION);
+
+        let bytes = new_payload.into_bytes().unwrap();
+
+        assert_eq!(
+            format!("{:?}", CertPayload::new(&bytes).unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from("No action specified",))
+            )
+        );
+    }
+
+    #[test]
+    // Test creating a Create Agent Action executes correctly
+    fn test_create_agent_action_creation_ok() {
+        let mut new_payload = CertificateRegistryPayload::new();
+        new_payload.set_action(CertificateRegistryPayload_Action::CREATE_AGENT);
+
+        let mut new_agent = CreateAgentAction::new();
+        new_agent.set_name("test".to_string());
+        new_payload.set_create_agent(new_agent.clone());
+
+        let bytes = new_payload.into_bytes().unwrap();
+
+        assert_eq!(
+            CertPayload::new(&bytes).unwrap(),
+            CertPayload {
+                action: Action::CreateAgent(new_agent.clone())
+            }
+        );
+    }
+
+    #[test]
+    // Test creating a Create Organization Action executes correctly
+    fn test_create_organization_action_creation_ok() {
+        let mut new_payload = CertificateRegistryPayload::new();
+        new_payload.set_action(CertificateRegistryPayload_Action::CREATE_ORGANIZATION);
+
+        let mut new_org = CreateOrganizationAction::new();
+        new_org.set_id("test".to_string());
+        new_org.set_organization_type(organization::Organization_Type::STANDARDS_BODY);
+        new_org.set_name("test".to_string());
+        let mut new_contact = organization::Organization_Contact::new();
+        new_contact.set_name("test".to_string());
+        new_contact.set_phone_number("test".to_string());
+        new_contact.set_language_code("test".to_string());
+        new_org.set_contacts(protobuf::RepeatedField::from_vec(vec![new_contact]));
+        new_payload.set_create_organization(new_org.clone());
+
+        let bytes = new_payload.into_bytes().unwrap();
+
+        assert_eq!(
+            CertPayload::new(&bytes).unwrap(),
+            CertPayload {
+                action: Action::CreateOrganization(new_org.clone())
+            }
+        );
+    }
+
+    #[test]
+    // Test creating a Update Organization Action executes correctly
+    fn test_update_organization_action_creation_ok() {
+        let mut new_payload = CertificateRegistryPayload::new();
+        new_payload.set_action(CertificateRegistryPayload_Action::UPDATE_ORGANIZATION);
+
+        let mut org_update = UpdateOrganizationAction::new();
+        let mut new_contact = organization::Organization_Contact::new();
+        new_contact.set_name("test".to_string());
+        new_contact.set_phone_number("test".to_string());
+        new_contact.set_language_code("test".to_string());
+        org_update.set_contacts(protobuf::RepeatedField::from_vec(vec![new_contact]));
+        new_payload.set_update_organization(org_update.clone());
+
+        let bytes = new_payload.into_bytes().unwrap();
+
+        assert_eq!(
+            CertPayload::new(&bytes).unwrap(),
+            CertPayload {
+                action: Action::UpdateOrganization(org_update.clone())
+            }
+        );
+    }
+
+    #[test]
+    // Test creating a Authorize Agent Action executes correctly
+    fn test_authorize_agent_action_creation_ok() {
+        let mut new_payload = CertificateRegistryPayload::new();
+        new_payload.set_action(CertificateRegistryPayload_Action::AUTHORIZE_AGENT);
+
+        let mut auth = AuthorizeAgentAction::new();
+        auth.set_public_key("test".to_string());
+        auth.set_role(organization::Organization_Authorization_Role::TRANSACTOR);
+        new_payload.set_authorize_agent(auth.clone());
+
+        let bytes = new_payload.into_bytes().unwrap();
+
+        assert_eq!(
+            CertPayload::new(&bytes).unwrap(),
+            CertPayload {
+                action: Action::AuthorizeAgent(auth.clone())
+            }
+        );
+    }
+
+    #[test]
+    // Test creating a Issue Certificate Action executes correctly
+    fn test_issue_certificate_action_creation_ok() {
+        let mut new_payload = CertificateRegistryPayload::new();
+        new_payload.set_action(CertificateRegistryPayload_Action::ISSUE_CERTIFICATE);
+
+        let mut issuance = IssueCertificateAction::new();
+        issuance.set_id("test".to_string());
+        issuance.set_source(IssueCertificateAction_Source::FROM_REQUEST);
+        issuance.set_request_id("test".to_string());
+        issuance.set_valid_from(1);
+        issuance.set_valid_to(2);
+        new_payload.set_issue_certificate(issuance.clone());
+
+        let bytes = new_payload.into_bytes().unwrap();
+
+        assert_eq!(
+            CertPayload::new(&bytes).unwrap(),
+            CertPayload {
+                action: Action::IssueCertificate(issuance.clone())
+            }
+        );
+    }
+
+    #[test]
+    // Test creating a Create Standard Action executes correctly
+    fn test_create_standard_action_creation_ok() {
+        let mut new_payload = CertificateRegistryPayload::new();
+        new_payload.set_action(CertificateRegistryPayload_Action::CREATE_STANDARD);
+
+        let mut standard = CreateStandardAction::new();
+        standard.set_standard_id("test".to_string());
+        standard.set_name("test".to_string());
+        standard.set_version("test".to_string());
+        standard.set_description("test".to_string());
+        standard.set_link("test".to_string());
+        standard.set_approval_date(1);
+        new_payload.set_create_standard(standard.clone());
+
+        let bytes = new_payload.into_bytes().unwrap();
+        assert_eq!(
+            CertPayload::new(&bytes).unwrap(),
+            CertPayload {
+                action: Action::CreateStandard(standard.clone())
+            }
+        );
+    }
+
+    #[test]
+    // Test creating a Update Standard Action executes correctly
+    fn test_update_standard_action_creation_ok() {
+        let mut new_payload = CertificateRegistryPayload::new();
+        new_payload.set_action(CertificateRegistryPayload_Action::UPDATE_STANDARD);
+
+        let mut standard = UpdateStandardAction::new();
+        standard.set_standard_id("test".to_string());
+        standard.set_version("test".to_string());
+        standard.set_description("test".to_string());
+        standard.set_link("test".to_string());
+        standard.set_approval_date(1);
+        new_payload.set_update_standard(standard.clone());
+
+        let bytes = new_payload.into_bytes().unwrap();
+        assert_eq!(
+            CertPayload::new(&bytes).unwrap(),
+            CertPayload {
+                action: Action::UpdateStandard(standard.clone())
+            }
+        );
+    }
+
+    #[test]
+    // Test creating a Open Request Action executes correctly
+    fn test_open_request_action_creation_ok() {
+        let mut new_payload = CertificateRegistryPayload::new();
+        new_payload.set_action(CertificateRegistryPayload_Action::OPEN_REQUEST_ACTION);
+
+        let mut request = OpenRequestAction::new();
+        request.set_id("test".to_string());
+        request.set_standard_id("test".to_string());
+        request.set_request_date(1);
+        new_payload.set_open_request_action(request.clone());
+
+        let bytes = new_payload.into_bytes().unwrap();
+        assert_eq!(
+            CertPayload::new(&bytes).unwrap(),
+            CertPayload {
+                action: Action::OpenRequest(request.clone())
+            }
+        );
+    }
+
+    #[test]
+    // Test creating a Change Request Status Action executes correctly
+    fn test_change_request_status_action_creation_ok() {
+        let mut new_payload = CertificateRegistryPayload::new();
+        new_payload.set_action(CertificateRegistryPayload_Action::CHANGE_REQUEST_STATUS_ACTION);
+
+        let mut request = ChangeRequestStatusAction::new();
+        request.set_request_id("test".to_string());
+        request.set_status(request::Request_Status::CLOSED);
+        new_payload.set_change_request_status_action(request.clone());
+
+        let bytes = new_payload.into_bytes().unwrap();
+
+        assert_eq!(
+            CertPayload::new(&bytes).unwrap(),
+            CertPayload {
+                action: Action::ChangeRequestStatus(request.clone())
+            }
+        );
+    }
+
+    #[test]
+    // Test creating a Accredit Certifying Body Action executes correctly
+    fn test_accredit_certifying_body_action_creation_ok() {
+        let mut new_payload = CertificateRegistryPayload::new();
+        new_payload.set_action(CertificateRegistryPayload_Action::ACCREDIT_CERTIFYING_BODY_ACTION);
+
+        let mut accreditation = AccreditCertifyingBodyAction::new();
+        accreditation.set_certifying_body_id("test".to_string());
+        accreditation.set_standard_id("test".to_string());
+        accreditation.set_valid_from(1);
+        accreditation.set_valid_to(2);
+        new_payload.set_accredit_certifying_body_action(accreditation.clone());
+
+        let bytes = new_payload.into_bytes().unwrap();
+
+        assert_eq!(
+            CertPayload::new(&bytes).unwrap(),
+            CertPayload {
+                action: Action::AccreditCertifyingBody(accreditation.clone())
+            }
+        );
+    }
+
+    #[test]
+    // Test unpack_data executes correctly
+    fn test_unpack_data_ok() {
+        let mut new_payload = CertificateRegistryPayload::new();
+        new_payload.set_action(CertificateRegistryPayload_Action::AUTHORIZE_AGENT);
+
+        let mut auth = AuthorizeAgentAction::new();
+        auth.set_public_key("test".to_string());
+        auth.set_role(organization::Organization_Authorization_Role::TRANSACTOR);
+        new_payload.set_authorize_agent(auth.clone());
+
+        let bytes = new_payload.into_bytes().unwrap();
+        let payload: Result<payload::CertificateRegistryPayload, ApplyError> = unpack_data(&bytes);
+
+        assert!(payload.is_ok());
+    }
 }
