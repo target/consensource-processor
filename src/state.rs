@@ -418,3 +418,236 @@ impl<'a> CertState<'a> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
+    use sawtooth_sdk::processor::handler::{ContextError, TransactionContext};
+
+    #[derive(Default, Debug)]
+    /// A MockTransactionContext that can be used to test
+    struct MockTransactionContext {
+        state: RefCell<HashMap<String, Vec<u8>>>,
+    }
+
+    impl TransactionContext for MockTransactionContext {
+        fn get_state_entries(
+            &self,
+            addresses: &[String],
+        ) -> Result<Vec<(String, Vec<u8>)>, ContextError> {
+            let mut results = Vec::new();
+            for addr in addresses {
+                let data = match self.state.borrow().get(addr) {
+                    Some(data) => data.clone(),
+                    None => Vec::new(),
+                };
+                results.push((addr.to_string(), data));
+            }
+            Ok(results)
+        }
+
+        fn set_state_entries(&self, entries: Vec<(String, Vec<u8>)>) -> Result<(), ContextError> {
+            for (addr, data) in entries {
+                self.state.borrow_mut().insert(addr, data);
+            }
+            Ok(())
+        }
+
+        /// this is not needed for these tests
+        fn delete_state_entries(&self, _addresses: &[String]) -> Result<Vec<String>, ContextError> {
+            unimplemented!()
+        }
+
+        /// this is not needed for these tests
+        fn add_receipt_data(&self, _data: &[u8]) -> Result<(), ContextError> {
+            unimplemented!()
+        }
+
+        /// this is not needed for these tests
+        fn add_event(
+            &self,
+            _event_type: String,
+            _attributes: Vec<(String, String)>,
+            _data: &[u8],
+        ) -> Result<(), ContextError> {
+            unimplemented!()
+        }
+    }
+
+    #[test]
+    // Test that if an agent does not exist in state, None is returned
+    fn test_get_agent_none() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+
+        let result = state.get_agent("test").unwrap();
+        assert!(result.is_none())
+    }
+
+    #[test]
+    // Test that if an agent exist in state, Some(agent) is returned
+    fn test_get_agent_some() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+
+        assert!(state.set_agent("test", make_agent("test")).is_ok());
+        let result = state.get_agent("test").unwrap();
+        assert_eq!(result, Some(make_agent("test")));
+    }
+
+    #[test]
+    // Test that if an organization does not exist in state, None is returned
+    fn test_get_organization_none() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+
+        let result = state.get_organization("test").unwrap();
+        assert!(result.is_none())
+    }
+
+    #[test]
+    // Test that if an organization exist in state, Some(organization) is returned
+    fn test_get_organization_some() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+
+        assert!(state
+            .set_organization("test", make_organization("test"))
+            .is_ok());
+        let result = state.get_organization("test").unwrap();
+        assert_eq!(result, Some(make_organization("test")));
+    }
+
+    #[test]
+    // Test that if a certificate does not exist in state, None is returned
+    fn test_get_certificate_none() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+
+        let result = state.get_certificate("test").unwrap();
+        assert!(result.is_none())
+    }
+
+    #[test]
+    // Test that if a certificate exist in state, Some(certificate) is returned
+    fn test_get_certificate_some() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+
+        assert!(state
+            .set_certificate("test", make_certificate("test"))
+            .is_ok());
+        let result = state.get_certificate("test").unwrap();
+        assert_eq!(result, Some(make_certificate("test")));
+    }
+
+    #[test]
+    // Test that if a request does not exist in state, None is returned
+    fn test_get_request_none() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+
+        let result = state.get_request("test").unwrap();
+        assert!(result.is_none())
+    }
+
+    #[test]
+    // Test that if a request exist in state, Some(request) is returned
+    fn test_get_request_some() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+
+        assert!(state.set_request("test", make_request("test")).is_ok());
+        let result = state.get_request("test").unwrap();
+        assert_eq!(result, Some(make_request("test")));
+    }
+
+    #[test]
+    // Test that if a standard does not exist in state, None is returned
+    fn test_get_standard_none() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+
+        let result = state.get_standard("test").unwrap();
+        assert!(result.is_none())
+    }
+
+    #[test]
+    // Test that if a standard exist in state, Some(standard) is returned
+    fn test_get_standard_some() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+
+        assert!(state.set_standard("test", make_standard("test")).is_ok());
+        let result = state.get_standard("test").unwrap();
+        assert_eq!(result, Some(make_standard("test")));
+    }
+
+    fn make_agent(public_key: &str) -> proto::agent::Agent {
+        let mut new_agent = proto::agent::Agent::new();
+        new_agent.set_public_key(public_key.to_string());
+        new_agent.set_name("test".to_string());
+        new_agent.set_timestamp(1);
+
+        new_agent
+    }
+
+    fn make_organization(org_id: &str) -> proto::organization::Organization {
+        let mut new_org = proto::organization::Organization::new();
+        new_org.set_id(org_id.to_string());
+        new_org.set_name("test".to_string());
+        new_org.set_organization_type(proto::organization::Organization_Type::STANDARDS_BODY);
+
+        let mut new_contact = proto::organization::Organization_Contact::new();
+        new_contact.set_name("test".to_string());
+        new_contact.set_phone_number("test".to_string());
+        new_contact.set_language_code("test".to_string());
+        new_org.set_contacts(protobuf::RepeatedField::from_vec(vec![new_contact]));
+
+        new_org
+    }
+
+    fn make_certificate(cert_id: &str) -> proto::certificate::Certificate {
+        let mut new_certificate = proto::certificate::Certificate::new();
+        new_certificate.set_id(cert_id.to_string());
+        new_certificate.set_certifying_body_id("test_cert_body".to_string());
+        new_certificate.set_factory_id("test_factory".to_string());
+        new_certificate.set_standard_id("test_standard".to_string());
+        new_certificate.set_standard_version("test".to_string());
+
+        new_certificate
+    }
+
+    fn make_request(request_id: &str) -> proto::request::Request {
+        let mut request = proto::request::Request::new();
+        request.set_id(request_id.to_string());
+        request.set_status(proto::request::Request_Status::OPEN);
+        request.set_standard_id("test_standard".to_string());
+        request.set_factory_id("test_org".to_string());
+        request.set_request_date(1);
+
+        request
+    }
+
+    fn make_standard(standard_id: &str) -> proto::standard::Standard {
+        let mut new_standard_version = proto::standard::Standard_StandardVersion::new();
+        new_standard_version.set_version("test".to_string());
+        new_standard_version.set_description("test".to_string());
+        new_standard_version.set_link("test".to_string());
+        new_standard_version.set_approval_date(1);
+
+        let mut new_standard = proto::standard::Standard::new();
+        new_standard.set_id(standard_id.to_string());
+        new_standard.set_name("test".to_string());
+        new_standard.set_organization_id("test_org".to_string());
+        new_standard.set_versions(protobuf::RepeatedField::from_vec(vec![
+            new_standard_version,
+        ]));
+
+        new_standard
+    }
+}
