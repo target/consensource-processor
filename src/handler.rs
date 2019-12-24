@@ -47,7 +47,7 @@ impl CertTransactionHandler {
     pub fn create_agent(
         &self,
         payload: &proto::payload::CreateAgentAction,
-        mut state: CertState,
+        state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         match state.get_agent(signer_public_key) {
@@ -84,7 +84,7 @@ impl CertTransactionHandler {
     pub fn create_organization(
         &self,
         payload: &proto::payload::CreateOrganizationAction,
-        mut state: CertState,
+        state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         match state.get_organization(payload.get_id()) {
@@ -166,7 +166,7 @@ impl CertTransactionHandler {
     pub fn update_organization(
         &self,
         payload: &proto::payload::UpdateOrganizationAction,
-        mut state: CertState,
+        state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         // Check agent
@@ -256,7 +256,7 @@ impl CertTransactionHandler {
     pub fn authorize_agent(
         &self,
         payload: &proto::payload::AuthorizeAgentAction,
-        mut state: CertState,
+        state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         // Validate an agent associated with the signer public key exists
@@ -381,7 +381,7 @@ impl CertTransactionHandler {
     pub fn issue_certificate(
         &self,
         payload: &proto::payload::IssueCertificateAction,
-        mut state: CertState,
+        state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         // Verify that certificate ID is not already associated with a Certificate object
@@ -559,7 +559,7 @@ impl CertTransactionHandler {
     pub fn open_request(
         &self,
         payload: &proto::payload::OpenRequestAction,
-        mut state: CertState,
+        state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         // Validate that the signer associated with a factory
@@ -656,7 +656,7 @@ impl CertTransactionHandler {
     pub fn change_request_status(
         &self,
         payload: &proto::payload::ChangeRequestStatusAction,
-        mut state: CertState,
+        state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         // Verify that the request does exist
@@ -752,7 +752,7 @@ impl CertTransactionHandler {
     pub fn create_standard(
         &self,
         payload: &proto::payload::CreateStandardAction,
-        mut state: CertState,
+        state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         // Verify that name is not already associated with a Standard object
@@ -852,7 +852,7 @@ impl CertTransactionHandler {
     pub fn update_standard(
         &self,
         payload: &proto::payload::UpdateStandardAction,
-        mut state: CertState,
+        state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         // Verify that name is not already associated with a Standard object
@@ -969,7 +969,7 @@ impl CertTransactionHandler {
     pub fn accredit_certifying_body(
         &self,
         payload: &proto::payload::AccreditCertifyingBodyAction,
-        mut state: CertState,
+        state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         // Verify the signer
@@ -1154,38 +1154,42 @@ impl TransactionHandler for CertTransactionHandler {
 
         // Return an action enum as the payload
         let payload = CertPayload::new(request.get_payload())?;
-        let state = CertState::new(context);
+        let mut state = CertState::new(context);
 
         match payload.get_action() {
-            Action::CreateAgent(payload) => self.create_agent(&payload, state, signer_public_key),
+            Action::CreateAgent(payload) => {
+                self.create_agent(&payload, &mut state, signer_public_key)
+            }
 
             Action::CreateOrganization(payload) => {
-                self.create_organization(&payload, state, signer_public_key)
+                self.create_organization(&payload, &mut state, signer_public_key)
             }
 
             Action::UpdateOrganization(payload) => {
-                self.update_organization(&payload, state, signer_public_key)
+                self.update_organization(&payload, &mut state, signer_public_key)
             }
 
             Action::AuthorizeAgent(payload) => {
-                self.authorize_agent(&payload, state, signer_public_key)
+                self.authorize_agent(&payload, &mut state, signer_public_key)
             }
 
             Action::IssueCertificate(payload) => {
-                self.issue_certificate(&payload, state, signer_public_key)
+                self.issue_certificate(&payload, &mut state, signer_public_key)
             }
             Action::CreateStandard(payload) => {
-                self.create_standard(&payload, state, signer_public_key)
+                self.create_standard(&payload, &mut state, signer_public_key)
             }
             Action::UpdateStandard(payload) => {
-                self.update_standard(&payload, state, signer_public_key)
+                self.update_standard(&payload, &mut state, signer_public_key)
             }
-            Action::OpenRequest(payload) => self.open_request(&payload, state, signer_public_key),
+            Action::OpenRequest(payload) => {
+                self.open_request(&payload, &mut state, signer_public_key)
+            }
             Action::ChangeRequestStatus(payload) => {
-                self.change_request_status(&payload, state, signer_public_key)
+                self.change_request_status(&payload, &mut state, signer_public_key)
             }
             Action::AccreditCertifyingBody(payload) => {
-                self.accredit_certifying_body(&payload, state, signer_public_key)
+                self.accredit_certifying_body(&payload, &mut state, signer_public_key)
             }
         }
     }
@@ -1211,4 +1215,810 @@ fn apply(
 #[no_mangle]
 pub unsafe fn entrypoint(payload: WasmPtr, signer: WasmPtr, signature: WasmPtr) -> i32 {
     execute_entrypoint(payload, signer, signature, apply)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use common::proto::payload::*;
+
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
+    use sawtooth_sdk::processor::handler::{ContextError, TransactionContext};
+
+    const PUBLIC_KEY_1: &str = "test_public_key_1";
+    const PUBLIC_KEY_2: &str = "test_public_key_2";
+    const PUBLIC_KEY_3: &str = "test_public_key_3";
+    const CERT_ORG_ID: &str = "test_cert_org";
+    const FACTORY_ID: &str = "test_factory";
+    const STANDARDS_BODY_ID: &str = "test_standards_body";
+    const CERT_ID: &str = "test_cert";
+    const REQUEST_ID: &str = "test_request";
+    const STANDARD_ID: &str = "test_standard";
+
+    #[derive(Default, Debug)]
+    /// A MockTransactionContext that can be used to test
+    struct MockTransactionContext {
+        state: RefCell<HashMap<String, Vec<u8>>>,
+    }
+
+    impl TransactionContext for MockTransactionContext {
+        fn get_state_entries(
+            &self,
+            addresses: &[String],
+        ) -> Result<Vec<(String, Vec<u8>)>, ContextError> {
+            let mut results = Vec::new();
+            for addr in addresses {
+                let data = match self.state.borrow().get(addr) {
+                    Some(data) => data.clone(),
+                    None => Vec::new(),
+                };
+                results.push((addr.to_string(), data));
+            }
+            Ok(results)
+        }
+
+        fn set_state_entries(&self, entries: Vec<(String, Vec<u8>)>) -> Result<(), ContextError> {
+            for (addr, data) in entries {
+                self.state.borrow_mut().insert(addr, data);
+            }
+            Ok(())
+        }
+
+        /// this is not needed for these tests
+        fn delete_state_entries(&self, _addresses: &[String]) -> Result<Vec<String>, ContextError> {
+            unimplemented!()
+        }
+
+        /// this is not needed for these tests
+        fn add_receipt_data(&self, _data: &[u8]) -> Result<(), ContextError> {
+            unimplemented!()
+        }
+
+        /// this is not needed for these tests
+        fn add_event(
+            &self,
+            _event_type: String,
+            _attributes: Vec<(String, String)>,
+            _data: &[u8],
+        ) -> Result<(), ContextError> {
+            unimplemented!()
+        }
+    }
+
+    #[test]
+    /// Test that if CreateAgentAction is valid an OK is returned and a new Agent is added to state
+    fn test_create_agent_handler_valid() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        let action = make_agent_create_action();
+
+        assert!(transaction_handler
+            .create_agent(&action, &mut state, PUBLIC_KEY_1)
+            .is_ok());
+
+        let agent = state
+            .get_agent(PUBLIC_KEY_1)
+            .expect("Failed to fetch agent")
+            .expect("No agent found");
+
+        assert_eq!(agent, make_agent(PUBLIC_KEY_1));
+    }
+
+    #[test]
+    /// Test that if CreateOrganizationAction is valid an OK is returned and a new Organization is added to state
+    fn test_create_organization_handler_valid() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+
+        assert!(transaction_handler
+            .create_organization(&action, &mut state, PUBLIC_KEY_1)
+            .is_ok());
+
+        let org = state
+            .get_organization(STANDARDS_BODY_ID)
+            .expect("Failed to fetch organization")
+            .expect("No organization found");
+
+        assert_eq!(
+            org,
+            make_organization(
+                STANDARDS_BODY_ID,
+                proto::organization::Organization_Type::STANDARDS_BODY,
+                PUBLIC_KEY_1
+            )
+        );
+    }
+
+    #[test]
+    /// Test that if UpdateOrganizationAction is valid an OK is returned and the Organization is updated in state
+    fn test_update_organization_handler_valid() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_organization_update_action();
+
+        assert!(transaction_handler
+            .update_organization(&action, &mut state, PUBLIC_KEY_1)
+            .is_ok());
+
+        let org = state
+            .get_organization(STANDARDS_BODY_ID)
+            .expect("Failed to fetch organization")
+            .expect("No organization found");
+
+        assert_eq!(
+            org,
+            make_organization_update(
+                STANDARDS_BODY_ID,
+                proto::organization::Organization_Type::STANDARDS_BODY,
+                PUBLIC_KEY_1
+            )
+        );
+    }
+
+    #[test]
+    /// Test that if AuthorizeAgentAction is valid an OK is returned and a new Authorization is added to state
+    fn test_authorize_agent_handler_valid() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let second_agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&second_agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+
+        let action = make_authorize_agent_action(PUBLIC_KEY_2);
+
+        assert!(transaction_handler
+            .authorize_agent(&action, &mut state, PUBLIC_KEY_1)
+            .is_ok());
+
+        let organization = state
+            .get_organization(STANDARDS_BODY_ID)
+            .expect("Failed to fetch Organization")
+            .expect("No Organization found");
+        //Find the new authorization in the organization, if it exists
+        let authorization = organization.get_authorizations().iter().find(|auth| {
+            auth.get_public_key() == PUBLIC_KEY_2
+                && auth.get_role()
+                    == proto::organization::Organization_Authorization_Role::TRANSACTOR
+        });
+
+        assert!(authorization.is_some());
+    }
+
+    #[test]
+    /// Test that if IssueCertificateAction is valid an OK is returned and a new Certificate is added to state
+    fn test_issue_certificate_handler_valid() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let standard_agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&standard_agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let standard_org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&standard_org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let factory_agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&factory_agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add factory org
+        let factory_org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        transaction_handler
+            .create_organization(&factory_org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add third agent
+        let cert_agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&cert_agent_action, &mut state, PUBLIC_KEY_3)
+            .unwrap();
+        //add certifying org
+        let cert_org_action = make_organization_create_action(
+            CERT_ORG_ID,
+            proto::organization::Organization_Type::CERTIFYING_BODY,
+        );
+        transaction_handler
+            .create_organization(&cert_org_action, &mut state, PUBLIC_KEY_3)
+            .unwrap();
+        //accredit the cert org
+        let accredit_action = make_accredit_certifying_body_action();
+        transaction_handler
+            .accredit_certifying_body(&accredit_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_issue_certificate_action();
+
+        assert!(transaction_handler
+            .issue_certificate(&action, &mut state, PUBLIC_KEY_3)
+            .is_ok());
+
+        let certificate = state
+            .get_certificate(CERT_ID)
+            .expect("Failed to fetch certificate")
+            .expect("No certificate found");
+
+        assert_eq!(certificate, make_certificate());
+    }
+
+    #[test]
+    /// Test that if CreateStandardAction is valid an OK is returned and a new Standard is added to state
+    fn test_create_standard_handler_valid() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_standard_create_action();
+
+        assert!(transaction_handler
+            .create_standard(&action, &mut state, PUBLIC_KEY_1)
+            .is_ok());
+
+        let standard = state
+            .get_standard(STANDARD_ID)
+            .expect("Failed to fetch Standard")
+            .expect("No Standard found");
+
+        assert_eq!(standard, make_standard());
+    }
+
+    #[test]
+    /// Test that if UpdateStandardAction is valid an OK is returned and the Standard is changed in state
+    fn test_update_standard_handler_valid() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_standard_update_action();
+
+        assert!(transaction_handler
+            .update_standard(&action, &mut state, PUBLIC_KEY_1)
+            .is_ok());
+
+        let standard = state
+            .get_standard(STANDARD_ID)
+            .expect("Failed to fetch Standard")
+            .expect("No Standard found");
+
+        assert_eq!(standard, make_standard_update());
+    }
+
+    #[test]
+    /// Test that if OpenRequestAction is valid an OK is returned and a new Request is added to state
+    fn test_open_request_handler_valid() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+
+        let action = make_open_request_action();
+
+        assert!(transaction_handler
+            .open_request(&action, &mut state, PUBLIC_KEY_1)
+            .is_ok());
+
+        let request = state
+            .get_request(REQUEST_ID)
+            .expect("Failed to fetch Request")
+            .expect("No Request found");
+
+        assert_eq!(request, make_request());
+    }
+
+    #[test]
+    /// Test that if ChangeRequestStatusAction is valid an OK is returned and the Request is updated in state
+    fn test_change_request_status_handler_valid() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+
+        let request_action = make_open_request_action();
+        transaction_handler
+            .open_request(&request_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_change_request_action();
+
+        assert!(transaction_handler
+            .change_request_status(&action, &mut state, PUBLIC_KEY_1)
+            .is_ok());
+
+        let request = state
+            .get_request(REQUEST_ID)
+            .expect("Failed to fetch Request")
+            .expect("No Request found");
+
+        assert_eq!(request, make_request_update());
+    }
+
+    #[test]
+    /// Test that if AccreditCertifyingBodyAction is valid an OK is returned and a new Accreditation is added to state
+    fn test_accredit_certifying_body_handler_valid() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add certifying org
+        let org_action = make_organization_create_action(
+            CERT_ORG_ID,
+            proto::organization::Organization_Type::CERTIFYING_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standard
+        let standard = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_accredit_certifying_body_action();
+
+        assert!(transaction_handler
+            .accredit_certifying_body(&action, &mut state, PUBLIC_KEY_1)
+            .is_ok());
+
+        let certifying_body = state
+            .get_organization(CERT_ORG_ID)
+            .expect("Failed to fetch Certifying Body")
+            .expect("No Certifying Body found");
+
+        let certifying_body_details = certifying_body.get_certifying_body_details().clone();
+        let accreditations = certifying_body_details.get_accreditations().to_vec();
+
+        assert!(accreditations
+            .iter()
+            .any(|accreditation| { accreditation.get_standard_id() == STANDARD_ID }));
+    }
+
+    fn make_agent(pub_key: &str) -> proto::agent::Agent {
+        let mut new_agent = proto::agent::Agent::new();
+        new_agent.set_public_key(pub_key.to_string());
+        new_agent.set_name("test".to_string());
+
+        new_agent
+    }
+
+    fn make_organization(
+        org_id: &str,
+        org_type: proto::organization::Organization_Type,
+        signer_public_key: &str,
+    ) -> proto::organization::Organization {
+        let mut new_org = proto::organization::Organization::new();
+        new_org.set_id(org_id.to_string());
+        new_org.set_name("test".to_string());
+        new_org.set_organization_type(org_type);
+
+        let mut admin_authorization = proto::organization::Organization_Authorization::new();
+        admin_authorization.set_public_key(signer_public_key.to_string());
+        admin_authorization.set_role(proto::organization::Organization_Authorization_Role::ADMIN);
+
+        let mut transactor_authorization = proto::organization::Organization_Authorization::new();
+        transactor_authorization.set_public_key(signer_public_key.to_string());
+        transactor_authorization
+            .set_role(proto::organization::Organization_Authorization_Role::TRANSACTOR);
+
+        new_org.set_authorizations(::protobuf::RepeatedField::from_vec(vec![
+            admin_authorization,
+            transactor_authorization,
+        ]));
+
+        let mut new_contact = proto::organization::Organization_Contact::new();
+        new_contact.set_name("test".to_string());
+        new_contact.set_phone_number("test".to_string());
+        new_contact.set_language_code("test".to_string());
+        new_org.set_contacts(protobuf::RepeatedField::from_vec(vec![new_contact]));
+
+        if org_type == proto::organization::Organization_Type::FACTORY {
+            let mut factory_details = proto::organization::Factory::new();
+            let mut address = proto::organization::Factory_Address::new();
+            address.set_street_line_1("test".to_string());
+            address.set_city("test".to_string());
+            address.set_state_province("test".to_string());
+            address.set_country("test".to_string());
+            address.set_postal_code("test".to_string());
+            factory_details.set_address(address);
+            new_org.set_factory_details(factory_details);
+        }
+
+        new_org
+    }
+
+    fn make_organization_update(
+        org_id: &str,
+        org_type: proto::organization::Organization_Type,
+        signer_public_key: &str,
+    ) -> proto::organization::Organization {
+        let mut new_org = proto::organization::Organization::new();
+        new_org.set_id(org_id.to_string());
+        new_org.set_name("test".to_string());
+        new_org.set_organization_type(org_type);
+
+        let mut admin_authorization = proto::organization::Organization_Authorization::new();
+        admin_authorization.set_public_key(signer_public_key.to_string());
+        admin_authorization.set_role(proto::organization::Organization_Authorization_Role::ADMIN);
+
+        let mut transactor_authorization = proto::organization::Organization_Authorization::new();
+        transactor_authorization.set_public_key(signer_public_key.to_string());
+        transactor_authorization
+            .set_role(proto::organization::Organization_Authorization_Role::TRANSACTOR);
+
+        new_org.set_authorizations(::protobuf::RepeatedField::from_vec(vec![
+            admin_authorization,
+            transactor_authorization,
+        ]));
+
+        let mut new_contact = proto::organization::Organization_Contact::new();
+        new_contact.set_name("test_change".to_string());
+        new_contact.set_phone_number("test_change".to_string());
+        new_contact.set_language_code("test_change".to_string());
+        new_org.set_contacts(protobuf::RepeatedField::from_vec(vec![new_contact]));
+
+        if org_type == proto::organization::Organization_Type::FACTORY {
+            let mut factory_details = proto::organization::Factory::new();
+            let mut address = proto::organization::Factory_Address::new();
+            address.set_street_line_1("test_change".to_string());
+            address.set_city("test_change".to_string());
+            address.set_state_province("test_change".to_string());
+            address.set_country("test_change".to_string());
+            address.set_postal_code("test_change".to_string());
+            factory_details.set_address(address);
+            new_org.set_factory_details(factory_details);
+        }
+
+        new_org
+    }
+
+    fn make_certificate() -> proto::certificate::Certificate {
+        let mut new_certificate = proto::certificate::Certificate::new();
+        new_certificate.set_id(CERT_ID.to_string());
+        new_certificate.set_certifying_body_id(CERT_ORG_ID.to_string());
+        new_certificate.set_factory_id(FACTORY_ID.to_string());
+        new_certificate.set_standard_id(STANDARD_ID.to_string());
+        new_certificate.set_standard_version("test".to_string());
+        new_certificate.set_valid_from(1);
+        new_certificate.set_valid_to(2);
+
+        new_certificate
+    }
+
+    fn make_request() -> proto::request::Request {
+        let mut request = proto::request::Request::new();
+        request.set_id(REQUEST_ID.to_string());
+        request.set_status(proto::request::Request_Status::OPEN);
+        request.set_standard_id(STANDARD_ID.to_string());
+        request.set_factory_id(FACTORY_ID.to_string());
+        request.set_request_date(1);
+
+        request
+    }
+
+    fn make_request_update() -> proto::request::Request {
+        let mut request = proto::request::Request::new();
+        request.set_id(REQUEST_ID.to_string());
+        request.set_status(proto::request::Request_Status::IN_PROGRESS);
+        request.set_standard_id(STANDARD_ID.to_string());
+        request.set_factory_id(FACTORY_ID.to_string());
+        request.set_request_date(1);
+
+        request
+    }
+
+    fn make_standard() -> proto::standard::Standard {
+        let mut new_standard_version = proto::standard::Standard_StandardVersion::new();
+        new_standard_version.set_version("test".to_string());
+        new_standard_version.set_description("test".to_string());
+        new_standard_version.set_link("test".to_string());
+        new_standard_version.set_approval_date(1);
+
+        let mut new_standard = proto::standard::Standard::new();
+        new_standard.set_id(STANDARD_ID.to_string());
+        new_standard.set_name("test".to_string());
+        new_standard.set_organization_id(STANDARDS_BODY_ID.to_string());
+        new_standard.set_versions(protobuf::RepeatedField::from_vec(vec![
+            new_standard_version,
+        ]));
+
+        new_standard
+    }
+
+    fn make_standard_update() -> proto::standard::Standard {
+        let mut old_standard_version = proto::standard::Standard_StandardVersion::new();
+        old_standard_version.set_version("test".to_string());
+        old_standard_version.set_description("test".to_string());
+        old_standard_version.set_link("test".to_string());
+        old_standard_version.set_approval_date(1);
+
+        let mut new_standard_version = proto::standard::Standard_StandardVersion::new();
+        new_standard_version.set_version("test_change".to_string());
+        new_standard_version.set_description("test_change".to_string());
+        new_standard_version.set_link("test_change".to_string());
+        new_standard_version.set_approval_date(1);
+
+        let mut new_standard = proto::standard::Standard::new();
+        new_standard.set_id(STANDARD_ID.to_string());
+        new_standard.set_name("test".to_string());
+        new_standard.set_organization_id(STANDARDS_BODY_ID.to_string());
+        new_standard.set_versions(protobuf::RepeatedField::from_vec(vec![
+            old_standard_version,
+            new_standard_version,
+        ]));
+
+        new_standard
+    }
+
+    fn make_agent_create_action() -> CreateAgentAction {
+        let mut new_agent_action = CreateAgentAction::new();
+        new_agent_action.set_name("test".to_string());
+        new_agent_action
+    }
+
+    fn make_organization_create_action(
+        org_id: &str,
+        org_type: proto::organization::Organization_Type,
+    ) -> CreateOrganizationAction {
+        let mut new_org_action = CreateOrganizationAction::new();
+        new_org_action.set_id(org_id.to_string());
+        new_org_action.set_organization_type(org_type);
+        new_org_action.set_name("test".to_string());
+        let mut new_contact = proto::organization::Organization_Contact::new();
+        new_contact.set_name("test".to_string());
+        new_contact.set_phone_number("test".to_string());
+        new_contact.set_language_code("test".to_string());
+        new_org_action.set_contacts(protobuf::RepeatedField::from_vec(vec![new_contact]));
+
+        if org_type == proto::organization::Organization_Type::FACTORY {
+            //let mut factory_details = proto::organization::Factory::new();
+            let mut address = proto::organization::Factory_Address::new();
+            address.set_street_line_1("test".to_string());
+            address.set_city("test".to_string());
+            address.set_state_province("test".to_string());
+            address.set_country("test".to_string());
+            address.set_postal_code("test".to_string());
+            //factory_details.set_address(address);
+            new_org_action.set_address(address);
+        }
+
+        new_org_action
+    }
+
+    fn make_organization_update_action() -> UpdateOrganizationAction {
+        let mut org_update_action = UpdateOrganizationAction::new();
+        let mut new_contact = proto::organization::Organization_Contact::new();
+        new_contact.set_name("test_change".to_string());
+        new_contact.set_phone_number("test_change".to_string());
+        new_contact.set_language_code("test_change".to_string());
+        org_update_action.set_contacts(protobuf::RepeatedField::from_vec(vec![new_contact]));
+        org_update_action
+    }
+
+    fn make_authorize_agent_action(pub_key: &str) -> AuthorizeAgentAction {
+        let mut new_auth_action = AuthorizeAgentAction::new();
+        new_auth_action.set_public_key(pub_key.to_string());
+        new_auth_action.set_role(proto::organization::Organization_Authorization_Role::TRANSACTOR);
+        new_auth_action
+    }
+
+    fn make_issue_certificate_action() -> IssueCertificateAction {
+        let mut issuance_action = IssueCertificateAction::new();
+        issuance_action.set_id(CERT_ID.to_string());
+        issuance_action.set_source(IssueCertificateAction_Source::INDEPENDENT);
+        issuance_action.set_standard_id(STANDARD_ID.to_string());
+        issuance_action.set_factory_id(FACTORY_ID.to_string());
+        issuance_action.set_valid_from(1);
+        issuance_action.set_valid_to(2);
+        issuance_action
+    }
+
+    fn make_standard_create_action() -> CreateStandardAction {
+        let mut new_standard_action = CreateStandardAction::new();
+        new_standard_action.set_standard_id(STANDARD_ID.to_string());
+        new_standard_action.set_name("test".to_string());
+        new_standard_action.set_version("test".to_string());
+        new_standard_action.set_description("test".to_string());
+        new_standard_action.set_link("test".to_string());
+        new_standard_action.set_approval_date(1);
+        new_standard_action
+    }
+
+    fn make_standard_update_action() -> UpdateStandardAction {
+        let mut standard_update_action = UpdateStandardAction::new();
+        standard_update_action.set_standard_id(STANDARD_ID.to_string());
+        standard_update_action.set_version("test_change".to_string());
+        standard_update_action.set_description("test_change".to_string());
+        standard_update_action.set_link("test_change".to_string());
+        standard_update_action.set_approval_date(1);
+        standard_update_action
+    }
+
+    fn make_open_request_action() -> OpenRequestAction {
+        let mut new_request_action = OpenRequestAction::new();
+        new_request_action.set_id(REQUEST_ID.to_string());
+        new_request_action.set_standard_id(STANDARD_ID.to_string());
+        new_request_action.set_request_date(1);
+        new_request_action
+    }
+
+    fn make_change_request_action() -> ChangeRequestStatusAction {
+        let mut change_request_action = ChangeRequestStatusAction::new();
+        change_request_action.set_request_id(REQUEST_ID.to_string());
+        change_request_action.set_status(proto::request::Request_Status::IN_PROGRESS);
+        change_request_action
+    }
+
+    fn make_accredit_certifying_body_action() -> AccreditCertifyingBodyAction {
+        let mut accredit_action = AccreditCertifyingBodyAction::new();
+        accredit_action.set_certifying_body_id(CERT_ORG_ID.to_string());
+        accredit_action.set_standard_id(STANDARD_ID.to_string());
+        accredit_action.set_valid_from(1);
+        accredit_action.set_valid_to(2);
+        accredit_action
+    }
 }
