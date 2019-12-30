@@ -71,8 +71,7 @@ RUN cargo build --release
 
 # Remove the auto-generated .rs files and the built files
 RUN rm src/*.rs
-RUN rm ./target/release/cert-registry-processor*
-#./target/release/consensource* ./target/release/deps/cert-registry* ./target/release/deps/consensource*
+RUN rm ./target/release/consensource-processor*
 
 # Copy over source files
 COPY processor/src /build/processor/src
