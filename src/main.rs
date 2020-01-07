@@ -28,6 +28,7 @@ mod payload;
 mod state;
 
 /// Standard entry point
+#[cfg_attr(tarpaulin, skip)]
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
     let matches = clap_app!(item =>
