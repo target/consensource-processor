@@ -1,5 +1,4 @@
-# ConsenSource Transaction Processor [![Build Status](https://travis-ci.org/target/consensource-processor.svg?branch=master)](https://travis-ci.org/target/consensource-processor) ![Coveralls github](https://img.shields.io/coveralls/github/target/consensource-processor)
-
+# ConsenSource Transaction Processor [![Build Status](https://travis-ci.org/target/consensource-processor.svg?branch=master)](https://travis-ci.org/target/consensource-processor) [![Coverage Status](https://img.shields.io/coveralls/github/target/consensource-processor)](https://coveralls.io/github/target/consensource-processor?branch=master)
 
 The transaction processor contains the business logic for ConsenSource's certificate registry [transaction family](https://sawtooth.hyperledger.org/docs/core/releases/latest/app_developers_guide/overview.html). It implements the [Sawtooth processor class](https://sawtooth.hyperledger.org/docs/core/releases/latest/_autogen/sdk_TP_tutorial_js.html) allowing developers to write out application-specific code for handling certificate registry transactions (or really any family of transactions).
 
