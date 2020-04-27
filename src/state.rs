@@ -182,6 +182,37 @@ impl<'a> CertState<'a> {
         }
     }
 
+    /// Fetches and deserializes Assertion data from state
+    /// ```
+    /// # Errors
+    /// Return an error if it fails to deserialize the Assertion's data
+    /// ```
+    pub fn get_assertion(
+        &mut self,
+        assertion_id: &str,
+    ) -> Result<Option<proto::assertion::Assertion>, ApplyError> {
+        let address = addressing::make_assertion_address(assertion_id);
+        let state_data = self.context.get_state_entry(&address)?;
+        match state_data {
+            Some(data) => {
+                let assertions: proto::assertion::AssertionContainer =
+                    protobuf::parse_from_bytes(data.as_slice()).map_err(|_err| {
+                        ApplyError::InvalidTransaction(String::from(
+                            "Cannot deserialize Assertion container",
+                        ))
+                    })?;
+
+                for assertion in assertions.get_entries() {
+                    if assertion.id == assertion_id {
+                        return Ok(Some(assertion.clone()));
+                    }
+                }
+                Ok(None)
+            }
+            None => Ok(None),
+        }
+    }
+
     /// As the addressing scheme does not guarantee uniquesness, this adds an Agent into a Agent Container
     /// which works like a hashbucket, serializes the container and puts it into state,
     /// ```
@@ -417,6 +448,54 @@ impl<'a> CertState<'a> {
         self.context.set_state_entry(address, serialized)?;
         Ok(())
     }
+
+    /// As the addressing scheme does not guarantee uniquesness, this adds an Assertion into an Assertion Container
+    /// which works like a hashbucket, serializes the container and puts it into state,
+    /// ```
+    /// # Errors
+    /// Returns an error if it fails to serialize the container or fails to set it to state
+    /// ```
+    pub fn set_assertion(
+        &mut self,
+        assertion_id: &str,
+        assertion: proto::assertion::Assertion,
+    ) -> Result<(), ApplyError> {
+        let address = addressing::make_assertion_address(assertion_id);
+        let state_data = self.context.get_state_entry(&address)?;
+        let mut assertions: proto::assertion::AssertionContainer = match state_data {
+            Some(data) => protobuf::parse_from_bytes(data.as_slice()).map_err(|_err| {
+                ApplyError::InvalidTransaction(String::from(
+                    "Cannot deserialize assertion container",
+                ))
+            })?,
+            // If there nothing at that memory address in state, make a new container, and create a new assertion
+            None => proto::assertion::AssertionContainer::new(),
+        };
+
+        // Use an iterator to find the index of a assertion_id that matches the assertion_id attempting to be created
+        if let Some((i, _)) = assertions
+            .entries
+            .iter()
+            .enumerate()
+            .find(|(_i, assertion)| assertion.id == assertion_id)
+        {
+            // If that assertion already exists, set assertion_slice to that assertion
+            let assertion_slice = assertions.entries.as_mut_slice();
+            assertion_slice[i] = assertion;
+        } else {
+            // Push new and unique request to the AssertionContainer
+            assertions.entries.push(assertion);
+            assertions.entries.sort_by_key(|a| a.clone().id);
+        }
+
+        let serialized = protobuf::Message::write_to_bytes(&assertions).map_err(|_err| {
+            ApplyError::InvalidTransaction(String::from("Cannot serialize assertion container"))
+        })?;
+
+        // Insert serialized AssertionContainer to an address in the merkle tree
+        self.context.set_state_entry(address, serialized)?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -587,6 +666,27 @@ mod tests {
         assert_eq!(result, Some(make_standard("test")));
     }
 
+    #[test]
+    // Test that if an assertion does not exist in state, None is returned
+    fn test_get_assertion_none() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+
+        let result = state.get_assertion("test").unwrap();
+        assert!(result.is_none())
+    }
+
+    #[test]
+    // Test that if an assertion exists in state, Some(assertion) is returned
+    fn test_get_assertion_some() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+
+        assert!(state.set_assertion("test", make_assertion("test")).is_ok());
+        let result = state.get_assertion("test").unwrap();
+        assert_eq!(result, Some(make_assertion("test")));
+    }
+
     fn make_agent(public_key: &str) -> proto::agent::Agent {
         let mut new_agent = proto::agent::Agent::new();
         new_agent.set_public_key(public_key.to_string());
@@ -649,5 +749,15 @@ mod tests {
         ]));
 
         new_standard
+    }
+
+    fn make_assertion(assertion_id: &str) -> proto::assertion::Assertion {
+        let mut assertion = proto::assertion::Assertion::new();
+        assertion.set_id(assertion_id.to_string());
+        assertion.set_assertor_pub_key("test".to_string());
+        assertion.set_assertion_type(proto::assertion::Assertion_Type::FACTORY);
+        assertion.set_object_id("test".to_string());
+
+        assertion
     }
 }
