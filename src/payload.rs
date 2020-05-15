@@ -27,6 +27,7 @@ pub enum Action {
     OpenRequest(payload::OpenRequestAction),
     ChangeRequestStatus(payload::ChangeRequestStatusAction),
     AccreditCertifyingBody(payload::AccreditCertifyingBodyAction),
+    CreateAssertion(payload::AssertAction),
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -96,178 +97,41 @@ impl CertPayload {
                 )));
             }
             payload::CertificateRegistryPayload_Action::CREATE_AGENT => {
-                let create_agent = payload.get_create_agent();
-
-                if create_agent.get_name() == "" {
-                    return Err(ApplyError::InvalidTransaction(String::from(
-                        "Name was not provided",
-                    )));
-                }
-                Action::CreateAgent(create_agent.clone())
+                validate_create_agent(&payload.get_create_agent())
             }
             payload::CertificateRegistryPayload_Action::CREATE_ORGANIZATION => {
-                let create_org = payload.get_create_organization();
-
-                reject_empty!(create_org, id, name, contacts)?;
-
-                if create_org.get_organization_type() == organization::Organization_Type::UNSET_TYPE
-                {
-                    return Err(ApplyError::InvalidTransaction(String::from(
-                        "Organization type is unset",
-                    )));
-                }
-
-                if create_org.get_organization_type() == organization::Organization_Type::FACTORY {
-                    if create_org.has_address() {
-                        let address = create_org.get_address();
-                        reject_empty!(address, street_line_1, city, country)?;
-                    } else {
-                        return Err(ApplyError::InvalidTransaction(String::from(
-                            "Factory must be created with an address",
-                        )));
-                    }
-                } else if create_org.has_address() {
-                    return Err(ApplyError::InvalidTransaction(String::from(
-                        "Only a factory can have an address",
-                    )));
-                }
-
-                Action::CreateOrganization(create_org.clone())
+                validate_create_org(&payload.get_create_organization())
             }
             payload::CertificateRegistryPayload_Action::UPDATE_ORGANIZATION => {
-                let update = payload.get_update_organization();
-                Action::UpdateOrganization(update.clone())
+                validate_update_org(&payload.get_update_organization())
             }
             payload::CertificateRegistryPayload_Action::AUTHORIZE_AGENT => {
-                let authorize_agent = payload.get_authorize_agent();
-
-                reject_empty!(authorize_agent, public_key)?;
-
-                if authorize_agent.get_role()
-                    == organization::Organization_Authorization_Role::UNSET_ROLE
-                {
-                    return Err(ApplyError::InvalidTransaction(String::from(
-                        "Agent role is UNSET. Set the role to TRANSACTOR or ADMIN",
-                    )));
-                }
-
-                if authorize_agent.get_role()
-                    != organization::Organization_Authorization_Role::TRANSACTOR
-                    && authorize_agent.get_role()
-                        != organization::Organization_Authorization_Role::ADMIN
-                {
-                    return Err(ApplyError::InvalidTransaction(String::from(
-                        "Agent role is invalid. Agents can only have the roles: TRANSACTOR or ADMIN",
-                    )));
-                }
-
-                Action::AuthorizeAgent(authorize_agent.clone())
+                validate_authorize_agent(&payload.get_authorize_agent())
             }
             payload::CertificateRegistryPayload_Action::ISSUE_CERTIFICATE => {
-                let issue_cert = payload.get_issue_certificate();
-                reject_empty!(issue_cert, id)?;
-
-                match issue_cert.get_source() {
-                    payload::IssueCertificateAction_Source::UNSET_SOURCE => {
-                        return Err(ApplyError::InvalidTransaction(String::from(
-                            "Issue Certificate source must be set. It can be
-                            FROM_REQUEST if the there is an request associated with the
-                            action, or INDEPENDENT if there is not request associated.",
-                        )));
-                    }
-                    payload::IssueCertificateAction_Source::FROM_REQUEST => {
-                        reject_empty!(issue_cert, id, request_id)?;
-                    }
-                    payload::IssueCertificateAction_Source::INDEPENDENT => {
-                        reject_empty!(issue_cert, id, factory_id, standard_id)?;
-                    }
-                }
-
-                if issue_cert.get_valid_from() == 0 {
-                    return Err(ApplyError::InvalidTransaction(String::from(
-                        "Certificate's valid_from field is invalid",
-                    )));
-                }
-
-                if issue_cert.get_valid_to() == 0 {
-                    return Err(ApplyError::InvalidTransaction(String::from(
-                        "Certificate's valid_to field is invalid",
-                    )));
-                }
-
-                Action::IssueCertificate(issue_cert.clone())
+                validate_issue_certificate(&payload.get_issue_certificate())
             }
             payload::CertificateRegistryPayload_Action::OPEN_REQUEST_ACTION => {
-                let open_request = payload.get_open_request_action();
-                reject_empty!(open_request, id, standard_id)?;
-                Action::OpenRequest(open_request.clone())
+                validate_open_request(&payload.get_open_request_action())
             }
             payload::CertificateRegistryPayload_Action::CHANGE_REQUEST_STATUS_ACTION => {
-                let change_request = payload.get_change_request_status_action();
-                reject_empty!(change_request, request_id)?;
-
-                if change_request.status != request::Request_Status::IN_PROGRESS
-                    && change_request.status != request::Request_Status::CLOSED
-                {
-                    return Err(ApplyError::InvalidTransaction(format!(
-                        "ChangeRequest status is invalid. Status can only be set to IN_PROGRESS or CLOSED.
-                        Status: {:?}",
-                        change_request.status
-                    )));
-                }
-
-                Action::ChangeRequestStatus(change_request.clone())
+                validate_change_request(&payload.get_change_request_status_action())
             }
             payload::CertificateRegistryPayload_Action::CREATE_STANDARD => {
-                let create_standard = payload.get_create_standard();
-
-                // Check if any fields are empty and return error if so
-                reject_empty!(
-                    create_standard,
-                    standard_id,
-                    name,
-                    version,
-                    description,
-                    link
-                )?;
-                if create_standard.approval_date == 0 {
-                    return Err(ApplyError::InvalidTransaction(
-                        "Approval date must be provided".to_string(),
-                    ));
-                }
-                Action::CreateStandard(create_standard.clone())
+                validate_create_standard(&payload.get_create_standard())
             }
             payload::CertificateRegistryPayload_Action::UPDATE_STANDARD => {
-                let update_standard = payload.get_update_standard();
-                reject_empty!(update_standard, standard_id, version, description, link)?;
-                if update_standard.approval_date == 0 {
-                    return Err(ApplyError::InvalidTransaction(
-                        "Approval date must be provided".to_string(),
-                    ));
-                }
-                Action::UpdateStandard(update_standard.clone())
+                validate_update_standard(&payload.get_update_standard())
             }
             payload::CertificateRegistryPayload_Action::ACCREDIT_CERTIFYING_BODY_ACTION => {
-                let accredit_certifying_body = payload.get_accredit_certifying_body_action();
-                reject_empty!(accredit_certifying_body, certifying_body_id, standard_id)?;
-
-                if accredit_certifying_body.get_valid_from() == 0 {
-                    return Err(ApplyError::InvalidTransaction(String::from(
-                        "Accreditation's valid_from field is invalid",
-                    )));
-                }
-
-                if accredit_certifying_body.get_valid_to() == 0 {
-                    return Err(ApplyError::InvalidTransaction(String::from(
-                        "Accreditations's valid_to field is invalid",
-                    )));
-                }
-
-                Action::AccreditCertifyingBody(accredit_certifying_body.clone())
+                validate_accredit_cert_body(&payload.get_accredit_certifying_body_action())
+            }
+            payload::CertificateRegistryPayload_Action::ASSERT_ACTION => {
+                validate_assert(&payload.get_assert_action())
             }
         };
         Ok(CertPayload {
-            action: payload_action,
+            action: payload_action?,
         })
     }
 
@@ -287,6 +151,188 @@ where
             err
         ))
     })
+}
+
+fn validate_create_agent(create_agent: &payload::CreateAgentAction) -> Result<Action, ApplyError> {
+    if create_agent.get_name() == "" {
+        return Err(ApplyError::InvalidTransaction(String::from(
+            "Name was not provided",
+        )));
+    }
+    Ok(Action::CreateAgent(create_agent.clone()))
+}
+fn validate_create_org(
+    create_org: &payload::CreateOrganizationAction,
+) -> Result<Action, ApplyError> {
+    reject_empty!(create_org, id, name, contacts)?;
+
+    if create_org.get_organization_type() == organization::Organization_Type::UNSET_TYPE {
+        return Err(ApplyError::InvalidTransaction(String::from(
+            "Organization type is unset",
+        )));
+    }
+
+    if create_org.get_organization_type() == organization::Organization_Type::FACTORY {
+        if create_org.has_address() {
+            let address = create_org.get_address();
+            reject_empty!(address, street_line_1, city, country)?;
+        } else {
+            return Err(ApplyError::InvalidTransaction(String::from(
+                "Factory must be created with an address",
+            )));
+        }
+    } else if create_org.has_address() {
+        return Err(ApplyError::InvalidTransaction(String::from(
+            "Only a factory can have an address",
+        )));
+    }
+
+    Ok(Action::CreateOrganization(create_org.clone()))
+}
+fn validate_update_org(update: &payload::UpdateOrganizationAction) -> Result<Action, ApplyError> {
+    Ok(Action::UpdateOrganization(update.clone()))
+}
+fn validate_authorize_agent(
+    authorize_agent: &payload::AuthorizeAgentAction,
+) -> Result<Action, ApplyError> {
+    reject_empty!(authorize_agent, public_key)?;
+
+    if authorize_agent.get_role() == organization::Organization_Authorization_Role::UNSET_ROLE {
+        return Err(ApplyError::InvalidTransaction(String::from(
+            "Agent role is UNSET. Set the role to TRANSACTOR or ADMIN",
+        )));
+    }
+
+    if authorize_agent.get_role() != organization::Organization_Authorization_Role::TRANSACTOR
+        && authorize_agent.get_role() != organization::Organization_Authorization_Role::ADMIN
+    {
+        return Err(ApplyError::InvalidTransaction(String::from(
+            "Agent role is invalid. Agents can only have the roles: TRANSACTOR or ADMIN",
+        )));
+    }
+
+    Ok(Action::AuthorizeAgent(authorize_agent.clone()))
+}
+fn validate_issue_certificate(
+    issue_cert: &payload::IssueCertificateAction,
+) -> Result<Action, ApplyError> {
+    reject_empty!(issue_cert, id)?;
+
+    match issue_cert.get_source() {
+        payload::IssueCertificateAction_Source::UNSET_SOURCE => {
+            return Err(ApplyError::InvalidTransaction(String::from(
+                "Issue Certificate source must be set. It can be
+                FROM_REQUEST if the there is an request associated with the
+                action, or INDEPENDENT if there is not request associated.",
+            )));
+        }
+        payload::IssueCertificateAction_Source::FROM_REQUEST => {
+            reject_empty!(issue_cert, id, request_id)?;
+        }
+        payload::IssueCertificateAction_Source::INDEPENDENT => {
+            reject_empty!(issue_cert, id, factory_id, standard_id)?;
+        }
+    }
+
+    if issue_cert.get_valid_from() == 0 {
+        return Err(ApplyError::InvalidTransaction(String::from(
+            "Certificate's valid_from field is invalid",
+        )));
+    }
+
+    if issue_cert.get_valid_to() == 0 {
+        return Err(ApplyError::InvalidTransaction(String::from(
+            "Certificate's valid_to field is invalid",
+        )));
+    }
+
+    Ok(Action::IssueCertificate(issue_cert.clone()))
+}
+fn validate_open_request(open_request: &payload::OpenRequestAction) -> Result<Action, ApplyError> {
+    reject_empty!(open_request, id, standard_id)?;
+    Ok(Action::OpenRequest(open_request.clone()))
+}
+fn validate_change_request(
+    change_request: &payload::ChangeRequestStatusAction,
+) -> Result<Action, ApplyError> {
+    reject_empty!(change_request, request_id)?;
+
+    if change_request.status != request::Request_Status::IN_PROGRESS
+        && change_request.status != request::Request_Status::CLOSED
+    {
+        return Err(ApplyError::InvalidTransaction(format!(
+            "ChangeRequest status is invalid. Status can only be set to IN_PROGRESS or CLOSED.
+            Status: {:?}",
+            change_request.status
+        )));
+    }
+
+    Ok(Action::ChangeRequestStatus(change_request.clone()))
+}
+fn validate_create_standard(
+    create_standard: &payload::CreateStandardAction,
+) -> Result<Action, ApplyError> {
+    // Check if any fields are empty and return error if so
+    reject_empty!(
+        create_standard,
+        standard_id,
+        name,
+        version,
+        description,
+        link
+    )?;
+    if create_standard.approval_date == 0 {
+        return Err(ApplyError::InvalidTransaction(
+            "Approval date must be provided".to_string(),
+        ));
+    }
+    Ok(Action::CreateStandard(create_standard.clone()))
+}
+fn validate_update_standard(
+    update_standard: &payload::UpdateStandardAction,
+) -> Result<Action, ApplyError> {
+    reject_empty!(update_standard, standard_id, version, description, link)?;
+    if update_standard.approval_date == 0 {
+        return Err(ApplyError::InvalidTransaction(
+            "Approval date must be provided".to_string(),
+        ));
+    }
+    Ok(Action::UpdateStandard(update_standard.clone()))
+}
+fn validate_accredit_cert_body(
+    accredit_certifying_body: &payload::AccreditCertifyingBodyAction,
+) -> Result<Action, ApplyError> {
+    reject_empty!(accredit_certifying_body, certifying_body_id, standard_id)?;
+
+    if accredit_certifying_body.get_valid_from() == 0 {
+        return Err(ApplyError::InvalidTransaction(String::from(
+            "Accreditation's valid_from field is invalid",
+        )));
+    }
+
+    if accredit_certifying_body.get_valid_to() == 0 {
+        return Err(ApplyError::InvalidTransaction(String::from(
+            "Accreditations's valid_to field is invalid",
+        )));
+    }
+
+    Ok(Action::AccreditCertifyingBody(
+        accredit_certifying_body.clone(),
+    ))
+}
+fn validate_assert(assertion: &payload::AssertAction) -> Result<Action, ApplyError> {
+    if assertion.has_new_factory() {
+        validate_create_org(&assertion.get_new_factory().get_factory())?;
+    } else if assertion.has_new_certificate() {
+        validate_issue_certificate(&assertion.get_new_certificate())?;
+    } else if assertion.has_new_standard() {
+        validate_create_standard(&assertion.get_new_standard())?;
+    } else {
+        return Err(ApplyError::InvalidTransaction(String::from(
+            "Assertion had no data to assert",
+        )));
+    }
+    Ok(Action::CreateAssertion(assertion.clone()))
 }
 
 #[cfg(test)]
@@ -545,6 +591,47 @@ mod tests {
             CertPayload::new(&bytes).unwrap(),
             CertPayload {
                 action: Action::AccreditCertifyingBody(accreditation.clone())
+            }
+        );
+    }
+
+    #[test]
+    // Test creating a Assert Action executes correctly
+    fn test_assert_action_creation_ok() {
+        let mut new_payload = CertificateRegistryPayload::new();
+        new_payload.set_action(CertificateRegistryPayload_Action::ASSERT_ACTION);
+
+        let mut assertion = AssertAction::new();
+
+        let mut new_org = CreateOrganizationAction::new();
+        new_org.set_id("test".to_string());
+        new_org.set_organization_type(organization::Organization_Type::FACTORY);
+        new_org.set_name("test".to_string());
+        let mut new_contact = organization::Organization_Contact::new();
+        new_contact.set_name("test".to_string());
+        new_contact.set_phone_number("test".to_string());
+        new_contact.set_language_code("test".to_string());
+        new_org.set_contacts(protobuf::RepeatedField::from_vec(vec![new_contact]));
+        let mut new_address = organization::Factory_Address::new();
+        new_address.set_street_line_1("test".to_string());
+        new_address.set_city("test".to_string());
+        new_address.set_state_province("test".to_string());
+        new_address.set_country("test".to_string());
+        new_address.set_postal_code("test".to_string());
+        new_org.set_address(new_address.clone());
+        let mut new_factory_assertion = AssertAction_FactoryAssertion::new();
+        new_factory_assertion.set_factory(new_org.clone());
+        new_factory_assertion.set_existing_factory_id("test".to_string());
+        assertion.set_new_factory(new_factory_assertion.clone());
+
+        new_payload.set_assert_action(assertion.clone());
+
+        let bytes = new_payload.into_bytes().unwrap();
+
+        assert_eq!(
+            CertPayload::new(&bytes).unwrap(),
+            CertPayload {
+                action: Action::CreateAssertion(assertion.clone())
             }
         );
     }
