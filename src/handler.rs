@@ -1256,6 +1256,23 @@ mod tests {
     }
 
     #[test]
+    /// Test that CreateAgentAction is invalid if an agent already exists
+    fn test_create_agent_handler_agent_already_exists() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        let action = make_agent_create_action();
+
+        assert!(transaction_handler
+            .create_agent(&action, &mut state, PUBLIC_KEY_1)
+            .is_ok());
+
+        let result = transaction_handler.create_agent(&action, &mut state, PUBLIC_KEY_1);
+
+        assert_eq!(result.is_err(), true);
+    }
+
+    #[test]
     /// Test that if CreateOrganizationAction is valid an OK is returned and a new Organization is added to state
     fn test_create_organization_handler_valid() {
         let mut transaction_context = MockTransactionContext::default();
@@ -1289,6 +1306,31 @@ mod tests {
                 PUBLIC_KEY_1
             )
         );
+    }
+
+    #[test]
+    fn test_create_organization_handler_organization_already_exists() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+
+        assert!(transaction_handler
+            .create_organization(&action, &mut state, PUBLIC_KEY_1)
+            .is_ok());
+
+        let result = transaction_handler.create_organization(&action, &mut state, PUBLIC_KEY_1);
+
+        assert_eq!(result.is_err(), true);
     }
 
     #[test]
@@ -1478,6 +1520,36 @@ mod tests {
             .expect("No Standard found");
 
         assert_eq!(standard, make_standard(STANDARDS_BODY_ID));
+    }
+
+    #[test]
+    fn test_create_standard_handler_standard_already_exists() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_standard_create_action();
+
+        assert!(transaction_handler
+            .create_standard(&action, &mut state, PUBLIC_KEY_1)
+            .is_ok());
+
+        let result = transaction_handler.create_standard(&action, &mut state, PUBLIC_KEY_1);
+
+        assert_eq!(result.is_err(), true);
     }
 
     #[test]
