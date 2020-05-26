@@ -1263,9 +1263,9 @@ mod tests {
         let transaction_handler = CertTransactionHandler::new();
         let action = make_agent_create_action();
 
-        assert!(transaction_handler
+        transaction_handler
             .create_agent(&action, &mut state, PUBLIC_KEY_1)
-            .is_ok());
+            .unwrap();
 
         let result = transaction_handler.create_agent(&action, &mut state, PUBLIC_KEY_1);
 
@@ -1324,9 +1324,9 @@ mod tests {
             proto::organization::Organization_Type::STANDARDS_BODY,
         );
 
-        assert!(transaction_handler
+        transaction_handler
             .create_organization(&action, &mut state, PUBLIC_KEY_1)
-            .is_ok());
+            .unwrap();
 
         let result = transaction_handler.create_organization(&action, &mut state, PUBLIC_KEY_1);
 
@@ -1543,9 +1543,9 @@ mod tests {
 
         let action = make_standard_create_action();
 
-        assert!(transaction_handler
+        transaction_handler
             .create_standard(&action, &mut state, PUBLIC_KEY_1)
-            .is_ok());
+            .unwrap();
 
         let result = transaction_handler.create_standard(&action, &mut state, PUBLIC_KEY_1);
 
