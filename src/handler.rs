@@ -603,7 +603,7 @@ impl CertTransactionHandler {
             .any(|version| version.version == payload.version)
         {
             return Err(ApplyError::InvalidTransaction(format!(
-                "Version already exists. Version  {}",
+                "Version already exists. Version {}",
                 payload.version
             )));
         }
@@ -1942,7 +1942,7 @@ mod tests {
             .create_standard(&standard_action, &mut state, PUBLIC_KEY_1)
             .unwrap();
 
-        let action = make_standard_update_action();
+        let action = make_standard_update_action("test_change");
 
         assert!(transaction_handler
             .update_standard(&action, &mut state, PUBLIC_KEY_1)
@@ -1954,6 +1954,178 @@ mod tests {
             .expect("No Standard found");
 
         assert_eq!(standard, make_standard_update());
+    }
+
+    #[test]
+    /// Test that UpdateStandardAction fails because standard to update does not exist
+    fn test_update_standard_handler_standard_does_not_exist() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        //update standard without creating it
+        let action = make_standard_update_action("test_change");
+
+        let result = transaction_handler.update_standard(&action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(format!(
+                    "Standard {} does not exist",
+                    STANDARD_ID
+                ),))
+            )
+        );
+    }
+
+    #[test]
+    /// Test that UpdateStandardAction fails if standard version already exists
+    fn test_update_standard_handler_version_already_exists() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_standard_update_action("test");
+
+        let result = transaction_handler.update_standard(&action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "Version already exists. Version test",
+                ))
+            )
+        );
+    }
+
+    #[test]
+    /// Test that UpdateStandardAction fails if there is no agent with the public key to update the standard
+    fn test_update_standard_handler_no_agent_with_pub_key() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_standard_update_action("test_change");
+
+        let result =
+            transaction_handler.update_standard(&action, &mut state, "non_existent_agent_pub_key");
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "No agent with public key non_existent_agent_pub_key exists",
+                ))
+            )
+        );
+    }
+
+    #[test]
+    /// Test that UpdateStandardAction fails because agent is not associated with org
+    fn test_update_standard_handler_agent_not_associated_with_organization() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        //add agent
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+
+        //update standard without creating it
+        let action = make_standard_update_action("test_change");
+
+        let result = transaction_handler.update_standard(&action, &mut state, PUBLIC_KEY_2);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "Agent is not associated with an organization: ",
+                ))
+            )
+        );
     }
 
     #[test]
@@ -2552,10 +2724,10 @@ mod tests {
         new_standard_action
     }
 
-    fn make_standard_update_action() -> UpdateStandardAction {
+    fn make_standard_update_action(version: &str) -> UpdateStandardAction {
         let mut standard_update_action = UpdateStandardAction::new();
         standard_update_action.set_standard_id(STANDARD_ID.to_string());
-        standard_update_action.set_version("test_change".to_string());
+        standard_update_action.set_version(version.to_string());
         standard_update_action.set_description("test_change".to_string());
         standard_update_action.set_link("test_change".to_string());
         standard_update_action.set_approval_date(1);
