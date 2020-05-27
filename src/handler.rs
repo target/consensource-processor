@@ -1711,6 +1711,149 @@ mod tests {
     }
 
     #[test]
+    /// Test that IssueCertificateAction fails because a certificate has already been issued
+    fn test_issue_certificate_handler_certificate_already_exists() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let standard_agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&standard_agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let standard_org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&standard_org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let factory_agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&factory_agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add factory org
+        let factory_org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        transaction_handler
+            .create_organization(&factory_org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add third agent
+        let cert_agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&cert_agent_action, &mut state, PUBLIC_KEY_3)
+            .unwrap();
+        //add certifying org
+        let cert_org_action = make_organization_create_action(
+            CERT_ORG_ID,
+            proto::organization::Organization_Type::CERTIFYING_BODY,
+        );
+        transaction_handler
+            .create_organization(&cert_org_action, &mut state, PUBLIC_KEY_3)
+            .unwrap();
+        //accredit the cert org
+        let accredit_action = make_accredit_certifying_body_action();
+        transaction_handler
+            .accredit_certifying_body(&accredit_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_issue_certificate_action();
+
+        transaction_handler
+            .issue_certificate(&action, &mut state, PUBLIC_KEY_3)
+            .unwrap();
+
+        //issue cert again
+        let result = transaction_handler.issue_certificate(&action, &mut state, PUBLIC_KEY_3);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(format!(
+                    "Certificate already exists: {}",
+                    CERT_ID
+                ),))
+            )
+        );
+    }
+
+    #[test]
+    /// Test that IssueCertificateAction fails because there is no agent with public key to accredit the cert body
+    fn test_issue_certificate_handler_no_agent_with_public_key() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let standard_agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&standard_agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let standard_org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&standard_org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add third agent
+        let cert_agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&cert_agent_action, &mut state, PUBLIC_KEY_3)
+            .unwrap();
+        //add certifying org
+        let cert_org_action = make_organization_create_action(
+            CERT_ORG_ID,
+            proto::organization::Organization_Type::CERTIFYING_BODY,
+        );
+        transaction_handler
+            .create_organization(&cert_org_action, &mut state, PUBLIC_KEY_3)
+            .unwrap();
+        //accredit the cert org
+        let accredit_action = make_accredit_certifying_body_action();
+        transaction_handler
+            .accredit_certifying_body(&accredit_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_issue_certificate_action();
+
+        let result = transaction_handler.issue_certificate(
+            &action,
+            &mut state,
+            "non_existent_agent_pub_key",
+        );
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "No agent with public key non_existent_agent_pub_key exists",
+                ))
+            )
+        );
+    }
+
+    #[test]
     /// Test that if CreateStandardAction is valid an OK is returned and a new Standard is added to state
     fn test_create_standard_handler_valid() {
         let mut transaction_context = MockTransactionContext::default();
