@@ -1560,6 +1560,87 @@ mod tests {
     }
 
     #[test]
+    /// Test if AuthorizeAgentAction fails if there is no agent with the public key to authorize
+    fn test_authorize_agent_handler_no_agent_with_public_key() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        //make authorization action without adding an agent
+        let action = make_authorize_agent_action("non_existent_agent_pub_key");
+
+        let result = transaction_handler.authorize_agent(&action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "No agent with public key non_existent_agent_pub_key exists",
+                ))
+            )
+        );
+    }
+
+    #[test]
+    /// Test if AuthorizeAgentAction fails if there is no agent with the public key to authorize
+    fn test_authorize_agent_handler_agent_not_associated_with_organization() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        //add second agent
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+
+        //make authorization action without adding an agent
+        let action = make_authorize_agent_action(PUBLIC_KEY_2);
+
+        let result = transaction_handler.authorize_agent(&action, &mut state, PUBLIC_KEY_2);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "Agent is not associated with an organization: ",
+                ))
+            )
+        );
+    }
+
+    #[test]
     /// Test that if IssueCertificateAction is valid an OK is returned and a new Certificate is added to state
     fn test_issue_certificate_handler_valid() {
         let mut transaction_context = MockTransactionContext::default();
