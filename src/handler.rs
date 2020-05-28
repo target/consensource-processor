@@ -1914,7 +1914,15 @@ mod tests {
 
         let result = transaction_handler.create_standard(&action, &mut state, PUBLIC_KEY_1);
 
-        assert_eq!(result.is_err(), true);
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from("Standard already exists: test",))
+            )
+        );
     }
 
     #[test]
