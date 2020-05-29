@@ -2189,6 +2189,211 @@ mod tests {
     }
 
     #[test]
+    /// Test that OpenRequestAction fails if there is no agent with provided public key
+    fn test_open_request_handler_no_agent_with_public_key() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+
+        let action = make_open_request_action();
+
+        let result =
+            transaction_handler.open_request(&action, &mut state, "non_existent_agent_pub_key");
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "No agent with public key non_existent_agent_pub_key exists",
+                ))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that OpenRequestAction fails if there is no organization
+    fn test_open_request_handler_no_organization_with_id_exists() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_open_request_action();
+
+        let result = transaction_handler.open_request(&action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from("No organization with ID  exists",))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that OpenRequestAction fails if the org is not a factory
+    fn test_open_request_handler_organization_is_not_a_factory() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            "not_even_a_factory",
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_open_request_action();
+
+        let result = transaction_handler.open_request(&action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    format!(
+                        "Organization not_even_a_factory is type {:?} but this action can only be performed by type {:?}",
+                        proto::organization::Organization_Type::STANDARDS_BODY,
+                        proto::organization::Organization_Type::FACTORY
+                    )
+                ,))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that OpenRequestAction fails ir request is already open/exists
+    fn test_open_request_handler_request_already_exists() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+
+        let action = make_open_request_action();
+
+        transaction_handler
+            .open_request(&action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let result = transaction_handler.open_request(&action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "Request already exists: test_request",
+                ))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that OpenRequestAction fails if no standard exists
+    fn test_open_request_handler_no_standard_exists() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+
+        let action = make_open_request_action();
+
+        let result = transaction_handler.open_request(&action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(format!(
+                    "No standard with ID {} exists",
+                    STANDARD_ID,
+                ),))
+            )
+        )
+    }
+
+    #[test]
     /// Test that if ChangeRequestStatusAction is valid an OK is returned and the Request is updated in state
     fn test_change_request_status_handler_valid() {
         let mut transaction_context = MockTransactionContext::default();
