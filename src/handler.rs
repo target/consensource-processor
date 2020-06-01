@@ -472,7 +472,7 @@ impl CertTransactionHandler {
         let mut request = match state.get_request(&payload.request_id) {
             Ok(Some(request)) => Ok(request),
             Ok(None) => Err(ApplyError::InvalidTransaction(format!(
-                "Request does not exists: {}",
+                "Request does not exist: {}",
                 payload.request_id
             ))),
             Err(err) => Err(err),
@@ -2451,6 +2451,292 @@ mod tests {
     }
 
     #[test]
+    /// Test that ChangeRequestStatusAction fails because the request does not exist
+    fn test_change_request_status_handler_request_does_not_exist() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+
+        let action = make_change_request_action();
+
+        let result = transaction_handler.change_request_status(&action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(format!(
+                    "Request does not exist: {}",
+                    REQUEST_ID
+                ),))
+            )
+        );
+    }
+
+    #[test]
+    /// Test that ChangeRequestStatusAction fails because there is no agent public key
+    fn test_change_request_status_handler_no_agent_public_key() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+
+        let request_action = make_open_request_action();
+        transaction_handler
+            .open_request(&request_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_change_request_action();
+
+        let result = transaction_handler.change_request_status(
+            &action,
+            &mut state,
+            "non_existent_agent_pub_key",
+        );
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "No agent with public key non_existent_agent_pub_key exists",
+                ))
+            )
+        );
+    }
+
+    #[test]
+    /// Test that ChangeRequestStatusAction fails because an agent is not authorized
+    fn test_change_request_status_handler_agent_is_not_authorized() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+
+        let request_action = make_open_request_action();
+        transaction_handler
+            .open_request(&request_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_change_request_action();
+
+        let result = transaction_handler.change_request_status(&action, &mut state, PUBLIC_KEY_2);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(format!(
+                    "Agent {} is not authorized to update request {}",
+                    STANDARDS_BODY_ID, FACTORY_ID
+                ),))
+            )
+        );
+    }
+
+    #[test]
+    /// Test that ChangeRequestStatusAction fails because closed requests cannot be modified
+    fn test_change_request_status_handler_cannot_modify_closed_requests() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+
+        let request_action = make_open_request_action();
+        transaction_handler
+            .open_request(&request_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let change_action = make_change_request_close_action();
+
+        transaction_handler
+            .change_request_status(&change_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let close_action = make_change_request_close_action();
+
+        let result =
+            transaction_handler.change_request_status(&close_action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(format!(
+                    "Once CLOSED or CERTIFIED, the request status can not be modified again.
+                Status: CLOSED"
+                ),))
+            )
+        );
+    }
+
+    #[test]
+    /// Test that ChangeRequestStatusAction fails because certified requests cannot be modified
+    fn test_change_request_status_handler_cannot_modify_certified_requests() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+
+        let request_action = make_open_request_action();
+        transaction_handler
+            .open_request(&request_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let change_action = make_change_request_certified_action();
+
+        transaction_handler
+            .change_request_status(&change_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let close_action = make_change_request_close_action();
+
+        let result =
+            transaction_handler.change_request_status(&close_action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(format!(
+                    "Once CLOSED or CERTIFIED, the request status can not be modified again.
+                Status: CERTIFIED"
+                ),))
+            )
+        );
+    }
+
+    #[test]
     /// Test that if AccreditCertifyingBodyAction is valid an OK is returned and a new Accreditation is added to state
     fn test_accredit_certifying_body_handler_valid() {
         let mut transaction_context = MockTransactionContext::default();
@@ -2959,6 +3245,20 @@ mod tests {
         let mut change_request_action = ChangeRequestStatusAction::new();
         change_request_action.set_request_id(REQUEST_ID.to_string());
         change_request_action.set_status(proto::request::Request_Status::IN_PROGRESS);
+        change_request_action
+    }
+
+    fn make_change_request_close_action() -> ChangeRequestStatusAction {
+        let mut change_request_action = ChangeRequestStatusAction::new();
+        change_request_action.set_request_id(REQUEST_ID.to_string());
+        change_request_action.set_status(proto::request::Request_Status::CLOSED);
+        change_request_action
+    }
+
+    fn make_change_request_certified_action() -> ChangeRequestStatusAction {
+        let mut change_request_action = ChangeRequestStatusAction::new();
+        change_request_action.set_request_id(REQUEST_ID.to_string());
+        change_request_action.set_status(proto::request::Request_Status::CERTIFIED);
         change_request_action
     }
 
