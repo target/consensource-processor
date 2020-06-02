@@ -3313,6 +3313,199 @@ mod tests {
         assert_eq!(standard, make_standard(INGESTION_ID));
     }
 
+    #[test]
+    /// Test that AssertAction fails because the assertion with the specified ID already exists
+    fn test_assert_action_handler_assertion_already_exists() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        //add org
+        let org_action = make_organization_create_action(
+            INGESTION_ID,
+            proto::organization::Organization_Type::INGESTION,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let assert_action = make_assert_action_new_factory(ASSERTION_ID_1);
+
+        transaction_handler
+            .create_assertion(&assert_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let result = transaction_handler.create_assertion(&assert_action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(format!(
+                    "Assertion with ID {} already exists",
+                    ASSERTION_ID_1
+                )))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that AssertAction fails because certificate dates are invalid
+    fn test_assert_action_handler_assertion_contains_invalid_dates() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        //add org
+        let org_action = make_organization_create_action(
+            INGESTION_ID,
+            proto::organization::Organization_Type::INGESTION,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let standard_assert_action = make_assert_action_new_standard(ASSERTION_ID_1);
+        transaction_handler
+            .create_assertion(&standard_assert_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let factory_assert_action = make_assert_action_new_factory(ASSERTION_ID_2);
+        transaction_handler
+            .create_assertion(&factory_assert_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let assert_action = make_assert_action_new_certificate_with_invalid_dates(ASSERTION_ID_3);
+
+        let result = transaction_handler.create_assertion(&assert_action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "Invalid dates. Valid to must be after valid from"
+                ))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that AssertAction fails because certificate source is unset
+    fn test_assert_action_handler_assertion_certificate_contains_no_source() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        //add org
+        let org_action = make_organization_create_action(
+            INGESTION_ID,
+            proto::organization::Organization_Type::INGESTION,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let standard_assert_action = make_assert_action_new_standard(ASSERTION_ID_1);
+        transaction_handler
+            .create_assertion(&standard_assert_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let factory_assert_action = make_assert_action_new_factory(ASSERTION_ID_2);
+        transaction_handler
+            .create_assertion(&factory_assert_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let assert_action = make_assert_action_new_certificate_with_no_source(ASSERTION_ID_3);
+
+        let result = transaction_handler.create_assertion(&assert_action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "The `IssueCertificateAction_Source` of a Certificate Assertion must be
+                        `INDEPENDENT` to indicate no request was made"
+                ))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that AssertAction fails because the specified standard does not exist
+    fn test_assert_action_new_standard_handler_standard_does_not_exist() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        //add org
+        let org_action = make_organization_create_action(
+            INGESTION_ID,
+            proto::organization::Organization_Type::INGESTION,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let standard_assert_action = make_assert_action_new_standard(ASSERTION_ID_1);
+        transaction_handler
+            .create_assertion(&standard_assert_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let factory_assert_action = make_assert_action_new_factory(ASSERTION_ID_2);
+        transaction_handler
+            .create_assertion(&factory_assert_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let assert_action =
+            make_assert_action_new_certificate_with_non_existent_standard(ASSERTION_ID_3);
+
+        let result = transaction_handler.create_assertion(&assert_action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "Standard non_existent_standard does not exist"
+                ))
+            )
+        )
+    }
+
     fn make_agent(pub_key: &str) -> proto::agent::Agent {
         let mut new_agent = proto::agent::Agent::new();
         new_agent.set_public_key(pub_key.to_string());
@@ -3565,6 +3758,39 @@ mod tests {
         issuance_action
     }
 
+    fn make_issue_certificate_action_with_invalid_dates() -> IssueCertificateAction {
+        let mut issuance_action = IssueCertificateAction::new();
+        issuance_action.set_id(CERT_ID.to_string());
+        issuance_action.set_source(IssueCertificateAction_Source::INDEPENDENT);
+        issuance_action.set_standard_id(STANDARD_ID.to_string());
+        issuance_action.set_factory_id(FACTORY_ID.to_string());
+        issuance_action.set_valid_from(2);
+        issuance_action.set_valid_to(1);
+        issuance_action
+    }
+
+    fn make_issue_certificate_action_with_no_source() -> IssueCertificateAction {
+        let mut issuance_action = IssueCertificateAction::new();
+        issuance_action.set_id(CERT_ID.to_string());
+        issuance_action.set_source(IssueCertificateAction_Source::UNSET_SOURCE);
+        issuance_action.set_standard_id(STANDARD_ID.to_string());
+        issuance_action.set_factory_id(FACTORY_ID.to_string());
+        issuance_action.set_valid_from(1);
+        issuance_action.set_valid_to(2);
+        issuance_action
+    }
+
+    fn make_issue_certificate_action_non_existent_standard() -> IssueCertificateAction {
+        let mut issuance_action = IssueCertificateAction::new();
+        issuance_action.set_id(CERT_ID.to_string());
+        issuance_action.set_source(IssueCertificateAction_Source::INDEPENDENT);
+        issuance_action.set_standard_id("non_existent_standard".to_string());
+        issuance_action.set_factory_id(FACTORY_ID.to_string());
+        issuance_action.set_valid_from(1);
+        issuance_action.set_valid_to(2);
+        issuance_action
+    }
+
     fn make_standard_create_action() -> CreateStandardAction {
         let mut new_standard_action = CreateStandardAction::new();
         new_standard_action.set_standard_id(STANDARD_ID.to_string());
@@ -3648,6 +3874,27 @@ mod tests {
     fn make_assert_action_new_certificate(id: &str) -> AssertAction {
         let mut assert_action = AssertAction::new();
         assert_action.set_new_certificate(make_issue_certificate_action());
+        assert_action.set_assertion_id(id.to_string());
+        assert_action
+    }
+
+    fn make_assert_action_new_certificate_with_invalid_dates(id: &str) -> AssertAction {
+        let mut assert_action = AssertAction::new();
+        assert_action.set_new_certificate(make_issue_certificate_action_with_invalid_dates());
+        assert_action.set_assertion_id(id.to_string());
+        assert_action
+    }
+
+    fn make_assert_action_new_certificate_with_no_source(id: &str) -> AssertAction {
+        let mut assert_action = AssertAction::new();
+        assert_action.set_new_certificate(make_issue_certificate_action_with_no_source());
+        assert_action.set_assertion_id(id.to_string());
+        assert_action
+    }
+
+    fn make_assert_action_new_certificate_with_non_existent_standard(id: &str) -> AssertAction {
+        let mut assert_action = AssertAction::new();
+        assert_action.set_new_certificate(make_issue_certificate_action_non_existent_standard());
         assert_action.set_assertion_id(id.to_string());
         assert_action
     }
