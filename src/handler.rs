@@ -472,7 +472,7 @@ impl CertTransactionHandler {
         let mut request = match state.get_request(&payload.request_id) {
             Ok(Some(request)) => Ok(request),
             Ok(None) => Err(ApplyError::InvalidTransaction(format!(
-                "Request does not exists: {}",
+                "Request does not exist: {}",
                 payload.request_id
             ))),
             Err(err) => Err(err),
@@ -2189,6 +2189,211 @@ mod tests {
     }
 
     #[test]
+    /// Test that OpenRequestAction fails if there is no agent with provided public key
+    fn test_open_request_handler_no_agent_with_public_key() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+
+        let action = make_open_request_action();
+
+        let result =
+            transaction_handler.open_request(&action, &mut state, "non_existent_agent_pub_key");
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "No agent with public key non_existent_agent_pub_key exists",
+                ))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that OpenRequestAction fails if there is no organization
+    fn test_open_request_handler_no_organization_with_id_exists() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_open_request_action();
+
+        let result = transaction_handler.open_request(&action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from("No organization with ID  exists",))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that OpenRequestAction fails if the org is not a factory
+    fn test_open_request_handler_organization_is_not_a_factory() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            "not_even_a_factory",
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_open_request_action();
+
+        let result = transaction_handler.open_request(&action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    format!(
+                        "Organization not_even_a_factory is type {:?} but this action can only be performed by type {:?}",
+                        proto::organization::Organization_Type::STANDARDS_BODY,
+                        proto::organization::Organization_Type::FACTORY
+                    )
+                ,))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that OpenRequestAction fails ir request is already open/exists
+    fn test_open_request_handler_request_already_exists() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+
+        let action = make_open_request_action();
+
+        transaction_handler
+            .open_request(&action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let result = transaction_handler.open_request(&action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "Request already exists: test_request",
+                ))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that OpenRequestAction fails if no standard exists
+    fn test_open_request_handler_no_standard_exists() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+
+        let action = make_open_request_action();
+
+        let result = transaction_handler.open_request(&action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(format!(
+                    "No standard with ID {} exists",
+                    STANDARD_ID,
+                ),))
+            )
+        )
+    }
+
+    #[test]
     /// Test that if ChangeRequestStatusAction is valid an OK is returned and the Request is updated in state
     fn test_change_request_status_handler_valid() {
         let mut transaction_context = MockTransactionContext::default();
@@ -2246,6 +2451,292 @@ mod tests {
     }
 
     #[test]
+    /// Test that ChangeRequestStatusAction fails because the request does not exist
+    fn test_change_request_status_handler_request_does_not_exist() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+
+        let action = make_change_request_action();
+
+        let result = transaction_handler.change_request_status(&action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(format!(
+                    "Request does not exist: {}",
+                    REQUEST_ID
+                ),))
+            )
+        );
+    }
+
+    #[test]
+    /// Test that ChangeRequestStatusAction fails because there is no agent public key
+    fn test_change_request_status_handler_no_agent_public_key() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+
+        let request_action = make_open_request_action();
+        transaction_handler
+            .open_request(&request_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_change_request_action();
+
+        let result = transaction_handler.change_request_status(
+            &action,
+            &mut state,
+            "non_existent_agent_pub_key",
+        );
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "No agent with public key non_existent_agent_pub_key exists",
+                ))
+            )
+        );
+    }
+
+    #[test]
+    /// Test that ChangeRequestStatusAction fails because an agent is not authorized
+    fn test_change_request_status_handler_agent_is_not_authorized() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+
+        let request_action = make_open_request_action();
+        transaction_handler
+            .open_request(&request_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_change_request_action();
+
+        let result = transaction_handler.change_request_status(&action, &mut state, PUBLIC_KEY_2);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(format!(
+                    "Agent {} is not authorized to update request {}",
+                    STANDARDS_BODY_ID, FACTORY_ID
+                ),))
+            )
+        );
+    }
+
+    #[test]
+    /// Test that ChangeRequestStatusAction fails because closed requests cannot be modified
+    fn test_change_request_status_handler_cannot_modify_closed_requests() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+
+        let request_action = make_open_request_action();
+        transaction_handler
+            .open_request(&request_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let change_action = make_change_request_close_action();
+
+        transaction_handler
+            .change_request_status(&change_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let close_action = make_change_request_close_action();
+
+        let result =
+            transaction_handler.change_request_status(&close_action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(format!(
+                    "Once CLOSED or CERTIFIED, the request status can not be modified again.
+                Status: CLOSED"
+                ),))
+            )
+        );
+    }
+
+    #[test]
+    /// Test that ChangeRequestStatusAction fails because certified requests cannot be modified
+    fn test_change_request_status_handler_cannot_modify_certified_requests() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+
+        let request_action = make_open_request_action();
+        transaction_handler
+            .open_request(&request_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let change_action = make_change_request_certified_action();
+
+        transaction_handler
+            .change_request_status(&change_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let close_action = make_change_request_close_action();
+
+        let result =
+            transaction_handler.change_request_status(&close_action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(format!(
+                    "Once CLOSED or CERTIFIED, the request status can not be modified again.
+                Status: CERTIFIED"
+                ),))
+            )
+        );
+    }
+
+    #[test]
     /// Test that if AccreditCertifyingBodyAction is valid an OK is returned and a new Accreditation is added to state
     fn test_accredit_certifying_body_handler_valid() {
         let mut transaction_context = MockTransactionContext::default();
@@ -2300,6 +2791,359 @@ mod tests {
         assert!(accreditations
             .iter()
             .any(|accreditation| { accreditation.get_standard_id() == STANDARD_ID }));
+    }
+
+    #[test]
+    /// Test that AccreditCertifyingBodyAction fails because there is no agent with public key exists
+    fn test_accredit_certifying_body_handler_no_agent_with_public_key() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add certifying org
+        let org_action = make_organization_create_action(
+            CERT_ORG_ID,
+            proto::organization::Organization_Type::CERTIFYING_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standard
+        let standard = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_accredit_certifying_body_action();
+
+        let result = transaction_handler.accredit_certifying_body(
+            &action,
+            &mut state,
+            "non_existent_agent_pub_key",
+        );
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "No agent with public key non_existent_agent_pub_key exists",
+                ))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that AccreditCertifyingBodyAction fails because agent is not associated with an organization
+    fn test_accredit_certifying_body_handler_agent_not_associated_with_organization() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add certifying org
+        let org_action = make_organization_create_action(
+            CERT_ORG_ID,
+            proto::organization::Organization_Type::CERTIFYING_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standard
+        let standard = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_3)
+            .unwrap();
+
+        let action = make_accredit_certifying_body_action();
+
+        let result =
+            transaction_handler.accredit_certifying_body(&action, &mut state, PUBLIC_KEY_3);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "Agent is not associated with an organization: "
+                ))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that AccreditCertifyingBodyAction fails because non standards body organizations cannot perform accreditations
+    fn test_accredit_certifying_body_handler_organization_type_cannot_perform_accreditation() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add certifying org
+        let org_action = make_organization_create_action(
+            CERT_ORG_ID,
+            proto::organization::Organization_Type::CERTIFYING_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standard
+        let standard = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_accredit_certifying_body_action();
+
+        let result =
+            transaction_handler.accredit_certifying_body(&action, &mut state, PUBLIC_KEY_2);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    format!(
+                        "Organization {} is type {:?} but this action can only be performed by type {:?}",
+                        CERT_ORG_ID,
+                        proto::organization::Organization_Type::CERTIFYING_BODY,
+                        proto::organization::Organization_Type::STANDARDS_BODY
+                    )
+                ))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that AccreditCertifyingBodyAction fails because no standard was ever created
+    fn test_accredit_certifying_body_handler_no_standard_with_id_exists() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add certifying org
+        let org_action = make_organization_create_action(
+            CERT_ORG_ID,
+            proto::organization::Organization_Type::CERTIFYING_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+
+        //skip adding standard
+
+        let action = make_accredit_certifying_body_action();
+
+        let result =
+            transaction_handler.accredit_certifying_body(&action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(format!(
+                    "No standard with ID {} exists",
+                    STANDARD_ID
+                )))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that AccreditCertifyingBodyAction fails because the accredited standard already exists
+    fn test_accredit_certifying_body_handler_accredited_standard_already_exists() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add certifying org
+        let org_action = make_organization_create_action(
+            CERT_ORG_ID,
+            proto::organization::Organization_Type::CERTIFYING_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standard
+        let standard = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_accredit_certifying_body_action();
+
+        transaction_handler
+            .accredit_certifying_body(&action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let result =
+            transaction_handler.accredit_certifying_body(&action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(format!(
+                    "Accreditation for Standard {}, version {} already exists",
+                    STANDARD_ID, "test"
+                )))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that AccreditCertifyingBodyAction fails because the accreditation dates are invalid
+    fn test_accredit_certifying_body_handler_invalid_dates() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add standards org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+        //add second agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add certifying org
+        let org_action = make_organization_create_action(
+            CERT_ORG_ID,
+            proto::organization::Organization_Type::CERTIFYING_BODY,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_2)
+            .unwrap();
+        //add standard
+        let standard = make_standard_create_action();
+        transaction_handler
+            .create_standard(&standard, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let action = make_accredit_certifying_body_invalid_date_action();
+
+        let result =
+            transaction_handler.accredit_certifying_body(&action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "Invalid dates. Valid to must be after valid from",
+                ))
+            )
+        )
     }
 
     #[test]
@@ -2467,6 +3311,199 @@ mod tests {
             .expect("No Asserted Certificate found");
 
         assert_eq!(standard, make_standard(INGESTION_ID));
+    }
+
+    #[test]
+    /// Test that AssertAction fails because the assertion with the specified ID already exists
+    fn test_assert_action_handler_assertion_already_exists() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        //add org
+        let org_action = make_organization_create_action(
+            INGESTION_ID,
+            proto::organization::Organization_Type::INGESTION,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let assert_action = make_assert_action_new_factory(ASSERTION_ID_1);
+
+        transaction_handler
+            .create_assertion(&assert_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let result = transaction_handler.create_assertion(&assert_action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(format!(
+                    "Assertion with ID {} already exists",
+                    ASSERTION_ID_1
+                )))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that AssertAction fails because certificate dates are invalid
+    fn test_assert_action_handler_assertion_contains_invalid_dates() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        //add org
+        let org_action = make_organization_create_action(
+            INGESTION_ID,
+            proto::organization::Organization_Type::INGESTION,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let standard_assert_action = make_assert_action_new_standard(ASSERTION_ID_1);
+        transaction_handler
+            .create_assertion(&standard_assert_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let factory_assert_action = make_assert_action_new_factory(ASSERTION_ID_2);
+        transaction_handler
+            .create_assertion(&factory_assert_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let assert_action = make_assert_action_new_certificate_with_invalid_dates(ASSERTION_ID_3);
+
+        let result = transaction_handler.create_assertion(&assert_action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "Invalid dates. Valid to must be after valid from"
+                ))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that AssertAction fails because certificate source is unset
+    fn test_assert_action_handler_assertion_certificate_contains_no_source() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        //add org
+        let org_action = make_organization_create_action(
+            INGESTION_ID,
+            proto::organization::Organization_Type::INGESTION,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let standard_assert_action = make_assert_action_new_standard(ASSERTION_ID_1);
+        transaction_handler
+            .create_assertion(&standard_assert_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let factory_assert_action = make_assert_action_new_factory(ASSERTION_ID_2);
+        transaction_handler
+            .create_assertion(&factory_assert_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let assert_action = make_assert_action_new_certificate_with_no_source(ASSERTION_ID_3);
+
+        let result = transaction_handler.create_assertion(&assert_action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "The `IssueCertificateAction_Source` of a Certificate Assertion must be
+                        `INDEPENDENT` to indicate no request was made"
+                ))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that AssertAction fails because the specified standard does not exist
+    fn test_assert_action_new_standard_handler_standard_does_not_exist() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = CertState::new(&mut transaction_context);
+        let transaction_handler = CertTransactionHandler::new();
+
+        //add agent
+        let agent_action = make_agent_create_action();
+        transaction_handler
+            .create_agent(&agent_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        //add org
+        let org_action = make_organization_create_action(
+            INGESTION_ID,
+            proto::organization::Organization_Type::INGESTION,
+        );
+        transaction_handler
+            .create_organization(&org_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let standard_assert_action = make_assert_action_new_standard(ASSERTION_ID_1);
+        transaction_handler
+            .create_assertion(&standard_assert_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let factory_assert_action = make_assert_action_new_factory(ASSERTION_ID_2);
+        transaction_handler
+            .create_assertion(&factory_assert_action, &mut state, PUBLIC_KEY_1)
+            .unwrap();
+
+        let assert_action =
+            make_assert_action_new_certificate_with_non_existent_standard(ASSERTION_ID_3);
+
+        let result = transaction_handler.create_assertion(&assert_action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "Standard non_existent_standard does not exist"
+                ))
+            )
+        )
     }
 
     fn make_agent(pub_key: &str) -> proto::agent::Agent {
@@ -2721,6 +3758,39 @@ mod tests {
         issuance_action
     }
 
+    fn make_issue_certificate_action_with_invalid_dates() -> IssueCertificateAction {
+        let mut issuance_action = IssueCertificateAction::new();
+        issuance_action.set_id(CERT_ID.to_string());
+        issuance_action.set_source(IssueCertificateAction_Source::INDEPENDENT);
+        issuance_action.set_standard_id(STANDARD_ID.to_string());
+        issuance_action.set_factory_id(FACTORY_ID.to_string());
+        issuance_action.set_valid_from(2);
+        issuance_action.set_valid_to(1);
+        issuance_action
+    }
+
+    fn make_issue_certificate_action_with_no_source() -> IssueCertificateAction {
+        let mut issuance_action = IssueCertificateAction::new();
+        issuance_action.set_id(CERT_ID.to_string());
+        issuance_action.set_source(IssueCertificateAction_Source::UNSET_SOURCE);
+        issuance_action.set_standard_id(STANDARD_ID.to_string());
+        issuance_action.set_factory_id(FACTORY_ID.to_string());
+        issuance_action.set_valid_from(1);
+        issuance_action.set_valid_to(2);
+        issuance_action
+    }
+
+    fn make_issue_certificate_action_non_existent_standard() -> IssueCertificateAction {
+        let mut issuance_action = IssueCertificateAction::new();
+        issuance_action.set_id(CERT_ID.to_string());
+        issuance_action.set_source(IssueCertificateAction_Source::INDEPENDENT);
+        issuance_action.set_standard_id("non_existent_standard".to_string());
+        issuance_action.set_factory_id(FACTORY_ID.to_string());
+        issuance_action.set_valid_from(1);
+        issuance_action.set_valid_to(2);
+        issuance_action
+    }
+
     fn make_standard_create_action() -> CreateStandardAction {
         let mut new_standard_action = CreateStandardAction::new();
         new_standard_action.set_standard_id(STANDARD_ID.to_string());
@@ -2757,12 +3827,35 @@ mod tests {
         change_request_action
     }
 
+    fn make_change_request_close_action() -> ChangeRequestStatusAction {
+        let mut change_request_action = ChangeRequestStatusAction::new();
+        change_request_action.set_request_id(REQUEST_ID.to_string());
+        change_request_action.set_status(proto::request::Request_Status::CLOSED);
+        change_request_action
+    }
+
+    fn make_change_request_certified_action() -> ChangeRequestStatusAction {
+        let mut change_request_action = ChangeRequestStatusAction::new();
+        change_request_action.set_request_id(REQUEST_ID.to_string());
+        change_request_action.set_status(proto::request::Request_Status::CERTIFIED);
+        change_request_action
+    }
+
     fn make_accredit_certifying_body_action() -> AccreditCertifyingBodyAction {
         let mut accredit_action = AccreditCertifyingBodyAction::new();
         accredit_action.set_certifying_body_id(CERT_ORG_ID.to_string());
         accredit_action.set_standard_id(STANDARD_ID.to_string());
         accredit_action.set_valid_from(1);
         accredit_action.set_valid_to(2);
+        accredit_action
+    }
+
+    fn make_accredit_certifying_body_invalid_date_action() -> AccreditCertifyingBodyAction {
+        let mut accredit_action = AccreditCertifyingBodyAction::new();
+        accredit_action.set_certifying_body_id(CERT_ORG_ID.to_string());
+        accredit_action.set_standard_id(STANDARD_ID.to_string());
+        accredit_action.set_valid_from(2);
+        accredit_action.set_valid_to(1);
         accredit_action
     }
 
@@ -2781,6 +3874,27 @@ mod tests {
     fn make_assert_action_new_certificate(id: &str) -> AssertAction {
         let mut assert_action = AssertAction::new();
         assert_action.set_new_certificate(make_issue_certificate_action());
+        assert_action.set_assertion_id(id.to_string());
+        assert_action
+    }
+
+    fn make_assert_action_new_certificate_with_invalid_dates(id: &str) -> AssertAction {
+        let mut assert_action = AssertAction::new();
+        assert_action.set_new_certificate(make_issue_certificate_action_with_invalid_dates());
+        assert_action.set_assertion_id(id.to_string());
+        assert_action
+    }
+
+    fn make_assert_action_new_certificate_with_no_source(id: &str) -> AssertAction {
+        let mut assert_action = AssertAction::new();
+        assert_action.set_new_certificate(make_issue_certificate_action_with_no_source());
+        assert_action.set_assertion_id(id.to_string());
+        assert_action
+    }
+
+    fn make_assert_action_new_certificate_with_non_existent_standard(id: &str) -> AssertAction {
+        let mut assert_action = AssertAction::new();
+        assert_action.set_new_certificate(make_issue_certificate_action_non_existent_standard());
         assert_action.set_assertion_id(id.to_string());
         assert_action
     }
