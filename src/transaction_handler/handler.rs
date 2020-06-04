@@ -2,18 +2,18 @@
  * CertTransactionHandler
  */
 cfg_if! {
-    if #[cfg(target_arch = "wasm32")] {
-        use sabre_sdk::ApplyError;
-        use sabre_sdk::TransactionContext;
-        use sabre_sdk::TransactionHandler;
-        use sabre_sdk::TpProcessRequest;
-        use sabre_sdk::{WasmPtr, execute_entrypoint};
-    } else {
-        use sawtooth_sdk::messages::processor::TpProcessRequest;
-        use sawtooth_sdk::processor::handler::ApplyError;
-        use sawtooth_sdk::processor::handler::TransactionContext;
-        use sawtooth_sdk::processor::handler::TransactionHandler;
-    }
+  if #[cfg(target_arch = "wasm32")] {
+    use sabre_sdk::ApplyError;
+    use sabre_sdk::TransactionContext;
+    use sabre_sdk::TransactionHandler;
+    use sabre_sdk::TpProcessRequest;
+    use sabre_sdk::{WasmPtr, execute_entrypoint};
+  } else {
+    use sawtooth_sdk::messages::processor::TpProcessRequest;
+    use sawtooth_sdk::processor::handler::ApplyError;
+    use sawtooth_sdk::processor::handler::TransactionContext;
+    use sawtooth_sdk::processor::handler::TransactionHandler;
+  }
 }
 
 use common::addressing;
@@ -22,6 +22,8 @@ use common::proto::organization::Organization_Authorization_Role::{ADMIN, TRANSA
 use payload::{Action, CertPayload};
 use protobuf;
 use state::CertState;
+
+use transaction_handler::{agent, assertion, certificate, factory, organization, standard};
 
 pub struct CertTransactionHandler {
     family_name: String,
@@ -42,8 +44,8 @@ impl CertTransactionHandler {
     /// ```
     /// # Errors
     /// Returns an error if:
-    ///     - Signer public key already associated with an agent
-    ///     - It fails to submit the new Agent to state.
+    ///   - Signer public key already associated with an agent
+    ///   - It fails to submit the new Agent to state.
     /// ```
     pub fn create_agent(
         &self,
@@ -51,25 +53,7 @@ impl CertTransactionHandler {
         state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
-        match state.get_agent(signer_public_key) {
-            Ok(Some(_)) => Err(ApplyError::InvalidTransaction(format!(
-                "Agent already exists: {}",
-                signer_public_key
-            ))),
-            Ok(None) => Ok(()),
-            Err(err) => Err(err),
-        }?;
-
-        // Create agent
-        let mut new_agent = proto::agent::Agent::new();
-        new_agent.set_public_key(signer_public_key.to_string());
-        new_agent.set_name(payload.get_name().to_string());
-        new_agent.set_timestamp(payload.get_timestamp());
-
-        // Put agent in state
-        state.set_agent(signer_public_key, new_agent)?;
-
-        Ok(())
+        agent::create(payload, state, signer_public_key)
     }
 
     /// Creates a new Organization and submits it to state
@@ -88,36 +72,7 @@ impl CertTransactionHandler {
         state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
-        match state.get_organization(payload.get_id()) {
-            Ok(Some(_)) => Err(ApplyError::InvalidTransaction(format!(
-                "Organization already exists: {}",
-                payload.get_id()
-            ))),
-            Ok(None) => Ok(()),
-            Err(err) => Err(err),
-        }?;
-
-        // Validate signer public key and agent
-        let mut agent = get_agent(state, signer_public_key)?;
-
-        if !agent.get_organization_id().is_empty() {
-            return Err(ApplyError::InvalidTransaction(format!(
-                "Agent is already associated with an organization: {}",
-                agent.get_organization_id(),
-            )));
-        }
-
-        // Set agent for the organization
-        agent.set_organization_id(payload.get_id().to_string());
-        state.set_agent(signer_public_key, agent)?;
-
-        // Create organization
-        let new_organization = make_organization(&payload, signer_public_key);
-
-        // Put organization in state
-        state.set_organization(payload.get_id(), new_organization)?;
-
-        Ok(())
+        organization::create(payload, state, signer_public_key)
     }
 
     /// Updates an existing Organization and submits it to state
@@ -137,36 +92,7 @@ impl CertTransactionHandler {
         state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
-        // Check agent
-        let agent = get_agent(state, signer_public_key)?;
-
-        // Check agent's organization
-        check_agent_has_org(&agent)?;
-
-        let mut organization = get_organization(state, agent.get_organization_id())?;
-
-        // Validate agent is authorized
-        check_authorization(&organization, signer_public_key, ADMIN)?;
-
-        // Handle updates
-        if payload.has_address() {
-            check_org_type(
-                &organization,
-                proto::organization::Organization_Type::FACTORY,
-            )?;
-
-            let mut updated_factory_details = organization.factory_details.get_ref().clone();
-            updated_factory_details.set_address(payload.address.get_ref().clone());
-            organization.set_factory_details(updated_factory_details);
-        }
-        if !payload.get_contacts().is_empty() {
-            organization.set_contacts(protobuf::RepeatedField::from_vec(
-                payload.get_contacts().to_vec(),
-            ));
-        }
-
-        state.set_organization(&agent.get_organization_id(), organization)?;
-        Ok(())
+        organization::update(payload, state, signer_public_key)
     }
 
     /// Updates an existing Organization to include a new authorization for an agent
@@ -189,61 +115,7 @@ impl CertTransactionHandler {
         state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
-        // Validate an agent associated with the signer public key exists
-        let signer_agent = get_agent(state, signer_public_key)?;
-
-        // Validate signer is associated with an organization
-        check_agent_has_org(&signer_agent)?;
-
-        // Validate the organization the signer is associated with exists
-        let mut organization = get_organization(state, signer_agent.get_organization_id())?;
-
-        // Validate signer agent is an ADMIN
-        check_authorization(&organization, signer_public_key, ADMIN)?;
-
-        // Validate agent to be authorized exists.
-        let mut agent_to_be_authorized = get_agent(state, payload.get_public_key())?;
-
-        // Validate agent to be authorized is not already associated with an org
-        // if the org is the same as the signer org, it will be allowed, in case
-        // an authorization is being updated, e.g. an ISSUER is being promoted to ADMIN.
-        if !agent_to_be_authorized.get_organization_id().is_empty()
-            && agent_to_be_authorized.get_organization_id() != signer_agent.get_organization_id()
-        {
-            return Err(ApplyError::InvalidTransaction(format!(
-                "Agent is already associated with a different organization: {}",
-                agent_to_be_authorized.get_organization_id(),
-            )));
-        }
-
-        {
-            let authorization = organization.get_authorizations().iter().find(|auth| {
-                auth.get_public_key() == agent_to_be_authorized.get_public_key()
-                    && auth.get_role() == payload.get_role()
-            });
-            if authorization.is_some() {
-                return Err(ApplyError::InvalidTransaction(format!(
-                    "Agent {} is already authorized as {:?}",
-                    agent_to_be_authorized.get_public_key(),
-                    payload.get_role()
-                )));
-            }
-        }
-
-        let mut new_authorization = proto::organization::Organization_Authorization::new();
-        new_authorization.set_public_key(agent_to_be_authorized.get_public_key().to_string());
-        new_authorization.set_role(payload.get_role());
-
-        organization.authorizations.push(new_authorization);
-
-        // Put updated organization in state
-        state.set_organization(signer_agent.get_organization_id(), organization)?;
-
-        // Update organization for the agent being authorized
-        agent_to_be_authorized.set_organization_id(signer_agent.get_organization_id().to_string());
-        state.set_agent(payload.get_public_key(), agent_to_be_authorized)?;
-
-        Ok(())
+        agent::authorize(payload, state, signer_public_key)
     }
 
     /// Creates a new Certificate and submits it to state
@@ -258,8 +130,8 @@ impl CertTransactionHandler {
     ///   - the Organization the Agent is associated with is not a CertifyingBody
     ///   - the standard does not exist
     ///   - if source is from request:
-    ///        - the request does not exist
-    ///        - the request does not have status set to IN_PROGRESS
+    ///    - the request does not exist
+    ///    - the request does not have status set to IN_PROGRESS
     ///   - the factory the certificate is for does not exist. x
     ///   - it fails to submit the new Certificate to state.
     /// ```
@@ -269,118 +141,7 @@ impl CertTransactionHandler {
         state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
-        // Verify that certificate ID is not already associated with a Certificate object
-        match state.get_certificate(payload.get_id()) {
-            Ok(Some(_)) => Err(ApplyError::InvalidTransaction(format!(
-                "Certificate already exists: {}",
-                payload.get_id()
-            ))),
-            Ok(None) => Ok(()),
-            Err(err) => Err(err),
-        }?;
-
-        // Validate signer public key and agent
-        let agent = get_agent(state, signer_public_key)?;
-
-        check_agent_has_org(&agent)?;
-
-        // Validate org existence
-        let organization = get_organization(state, agent.get_organization_id())?;
-
-        check_org_type(
-            &organization,
-            proto::organization::Organization_Type::CERTIFYING_BODY,
-        )?;
-
-        // Validate agent is authorized
-        check_authorization(&organization, signer_public_key, TRANSACTOR)?;
-
-        // Validate current issue date
-        let valid_from = payload.get_valid_from();
-        let valid_to = payload.get_valid_to();
-        if valid_to < valid_from {
-            return Err(ApplyError::InvalidTransaction(
-                "Invalid dates. Valid to must be after valid from".to_string(),
-            ));
-        }
-
-        let (factory_id, standard_id) = match payload.get_source() {
-            proto::payload::IssueCertificateAction_Source::FROM_REQUEST => {
-                let request = match state.get_request(payload.get_request_id())? {
-                    Some(request) => Ok(request),
-                    None => Err(ApplyError::InvalidTransaction(format!(
-                        "Request does not exist: {}",
-                        payload.get_request_id()
-                    ))),
-                }?;
-
-                if request.get_status() != proto::request::Request_Status::IN_PROGRESS {
-                    return Err(ApplyError::InvalidTransaction(format!(
-                        "The request with id {} has its status set to {:?}. Only requests with status set to IN_PROGRESS can be certified.",
-                        request.get_id(),
-                        request.get_status()
-                    )));
-                }
-
-                // update status of request
-                let mut updated_request = request.clone();
-                updated_request.set_status(proto::request::Request_Status::CERTIFIED);
-                state.set_request(payload.get_request_id(), updated_request)?;
-
-                Ok((
-                    request.get_factory_id().to_string(),
-                    request.get_standard_id().to_string(),
-                ))
-            }
-            proto::payload::IssueCertificateAction_Source::INDEPENDENT => {
-                get_organization(state, &payload.get_factory_id())?;
-                Ok((
-                    payload.get_factory_id().to_string(),
-                    payload.get_standard_id().to_string(),
-                ))
-            }
-            proto::payload::IssueCertificateAction_Source::UNSET_SOURCE => {
-                Err(ApplyError::InvalidTransaction(String::from(
-                    "Issue Certificate source must be set. It can be
-                    FROM_REQUEST if the there is an request associated with the
-                    action, or INDEPENDENT if there is not request associated.",
-                )))
-            }
-        }?;
-
-        // Get standard version from organization's cert_body_details
-        let certifying_body_details = organization.get_certifying_body_details();
-        let accreditations = certifying_body_details.get_accreditations().to_vec();
-        if accreditations
-            .iter()
-            .find(|accreditation| accreditation.get_standard_id() == standard_id)
-            .is_none()
-        {
-            return Err(ApplyError::InvalidTransaction(format!(
-                "Certifying body is not accredited for Standard {}",
-                standard_id
-            )));
-        }
-        let latest_standard_version = accreditations.last().unwrap();
-
-        // Create certificate
-        let mut new_certificate = proto::certificate::Certificate::new();
-        new_certificate.set_id(payload.get_id().to_string());
-        new_certificate.set_certifying_body_id(agent.get_organization_id().to_string());
-        new_certificate.set_factory_id(factory_id);
-        new_certificate.set_standard_id(standard_id);
-        new_certificate
-            .set_standard_version(latest_standard_version.get_standard_version().to_string());
-        new_certificate.set_certificate_data(::protobuf::RepeatedField::from_vec(
-            payload.get_certificate_data().to_vec(),
-        ));
-        new_certificate.set_valid_from(valid_from);
-        new_certificate.set_valid_to(valid_to);
-
-        // Put certificate in state
-        state.set_certificate(payload.get_id(), new_certificate)?;
-
-        Ok(())
+        certificate::issue(payload, state, signer_public_key)
     }
 
     /// Creates a new Request and submits it to state
@@ -402,50 +163,7 @@ impl CertTransactionHandler {
         state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
-        // Validate that the signer associated with a factory
-        let agent = get_agent(state, signer_public_key)?;
-        let organization = get_organization(state, agent.get_organization_id())?;
-
-        check_org_type(
-            &organization,
-            proto::organization::Organization_Type::FACTORY,
-        )?;
-
-        // Validate that agent is a transactor
-        check_authorization(&organization, signer_public_key, TRANSACTOR)?;
-
-        // Verify that the request does not already exist
-        match state.get_request(&payload.get_id()) {
-            Ok(Some(_)) => Err(ApplyError::InvalidTransaction(format!(
-                "Request already exists: {}",
-                payload.get_id()
-            ))),
-            Ok(None) => Ok(()),
-            Err(err) => Err(err),
-        }?;
-
-        // Validate that the standard_id and version are associated with a valid standard
-        match state.get_standard(&payload.get_standard_id()) {
-            Ok(Some(_)) => Ok(()),
-            Ok(None) => Err(ApplyError::InvalidTransaction(format!(
-                "No standard with ID {} exists",
-                payload.get_standard_id()
-            ))),
-            Err(err) => Err(err),
-        }?;
-
-        // Create and open new certification request
-        let mut request = proto::request::Request::new();
-        request.set_id(payload.get_id().to_string());
-        request.set_status(proto::request::Request_Status::OPEN);
-        request.set_standard_id(payload.get_standard_id().to_string());
-        request.set_factory_id(agent.get_organization_id().to_string());
-        request.set_request_date(payload.get_request_date());
-
-        // Put new request in state
-        state.set_request(&payload.get_id(), request)?;
-
-        Ok(())
+        factory::open_request(payload, state, signer_public_key)
     }
 
     /// Updates an existing Request status and submits it to state
@@ -468,50 +186,7 @@ impl CertTransactionHandler {
         state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
-        // Verify that the request does exist
-        let mut request = match state.get_request(&payload.request_id) {
-            Ok(Some(request)) => Ok(request),
-            Ok(None) => Err(ApplyError::InvalidTransaction(format!(
-                "Request does not exist: {}",
-                payload.request_id
-            ))),
-            Err(err) => Err(err),
-        }?;
-
-        // Validate that the signer associated with a factory
-        let agent = get_agent(state, signer_public_key)?;
-        let organization = get_organization(state, agent.get_organization_id())?;
-
-        // Validate that agent is a transactor
-        check_authorization(&organization, signer_public_key, TRANSACTOR)?;
-
-        if request.get_factory_id() != agent.get_organization_id() {
-            return Err(ApplyError::InvalidTransaction(format!(
-                "Agent {} is not authorized to update request {}",
-                agent.get_organization_id(),
-                request.get_factory_id()
-            )));
-        }
-
-        // Validate that the request is not in a finalized state
-        let status = request.get_status();
-        if status == proto::request::Request_Status::CLOSED
-            || status == proto::request::Request_Status::CERTIFIED
-        {
-            return Err(ApplyError::InvalidTransaction(format!(
-                "Once CLOSED or CERTIFIED, the request status can not be modified again.
-                Status: {:?}",
-                status
-            )));
-        }
-
-        // Update request status
-        request.set_status(payload.get_status());
-
-        // Put updated request in state
-        state.set_request(&payload.get_request_id(), request)?;
-
-        Ok(())
+        factory::change_request_status(payload, state, signer_public_key)
     }
 
     /// Creates a new Standard and submits it to state
@@ -533,38 +208,7 @@ impl CertTransactionHandler {
         state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
-        // Verify that name is not already associated with a Standard object
-        match state.get_standard(&payload.standard_id) {
-            Ok(Some(_)) => Err(ApplyError::InvalidTransaction(format!(
-                "Standard already exists: {}",
-                payload.name
-            ))),
-            Ok(None) => Ok(()),
-            Err(err) => Err(err),
-        }?;
-
-        // Validate signer public key and agent
-        let agent = get_agent(state, signer_public_key)?;
-
-        check_agent_has_org(&agent)?;
-
-        // Validate org existence
-        let organization = get_organization(state, agent.get_organization_id())?;
-
-        check_org_type(
-            &organization,
-            proto::organization::Organization_Type::STANDARDS_BODY,
-        )?;
-
-        // Validate agent is authorized
-        check_authorization(&organization, signer_public_key, TRANSACTOR)?;
-
-        let new_standard = make_standard(payload, &organization.get_id());
-
-        // Put new standard in state
-        state.set_standard(&payload.standard_id, new_standard)?;
-
-        Ok(())
+        standard::create(payload, state, signer_public_key)
     }
 
     /// Adds a new version of an existing Standard and submits it to state
@@ -587,66 +231,7 @@ impl CertTransactionHandler {
         state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
-        // Verify that name is not already associated with a Standard object
-        let mut standard = match state.get_standard(&payload.standard_id)? {
-            Some(standard) => Ok(standard),
-            None => Err(ApplyError::InvalidTransaction(format!(
-                "Standard {} does not exist",
-                payload.standard_id
-            ))),
-        }?;
-
-        let mut versions = standard.get_versions().to_vec();
-
-        if versions
-            .iter()
-            .any(|version| version.version == payload.version)
-        {
-            return Err(ApplyError::InvalidTransaction(format!(
-                "Version already exists. Version {}",
-                payload.version
-            )));
-        }
-
-        // Validate signer public key and agent
-        let agent = get_agent(state, signer_public_key)?;
-
-        check_agent_has_org(&agent)?;
-
-        // Validate org existence
-        let organization = get_organization(state, agent.get_organization_id())?;
-
-        check_org_type(
-            &organization,
-            proto::organization::Organization_Type::STANDARDS_BODY,
-        )?;
-
-        // Validate agent is authorized
-        check_authorization(&organization, signer_public_key, TRANSACTOR)?;
-
-        // Validade standard was created by agent's organizatio
-        if agent.get_organization_id() != standard.get_organization_id() {
-            return Err(ApplyError::InvalidTransaction(format!(
-                "Organization {} did not create the certification standard {}",
-                organization.get_name(),
-                standard.get_name()
-            )));
-        }
-
-        let mut new_standard_version = proto::standard::Standard_StandardVersion::new();
-        new_standard_version.set_version(payload.version.clone());
-        new_standard_version.set_description(payload.description.clone());
-        new_standard_version.set_link(payload.link.clone());
-        new_standard_version.set_approval_date(payload.approval_date.clone());
-
-        versions.push(new_standard_version);
-
-        standard.set_versions(protobuf::RepeatedField::from_vec(versions));
-
-        // Put updated standard in state
-        state.set_standard(&standard.id.clone(), standard)?;
-
-        Ok(())
+        standard::update(payload, state, signer_public_key)
     }
 
     /// Adds a new accreditation to an existing CertifyingBody organization and submits it to state
@@ -670,109 +255,7 @@ impl CertTransactionHandler {
         state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
-        // Verify the signer
-        let agent = get_agent(state, signer_public_key)?;
-
-        // Verify the signer is associated with a Standards Body
-        check_agent_has_org(&agent)?;
-
-        let agent_organization = get_organization(state, agent.get_organization_id())?;
-
-        check_org_type(
-            &agent_organization,
-            proto::organization::Organization_Type::STANDARDS_BODY,
-        )?;
-
-        // Verify the signer is an authorized transactor within their organization
-        check_authorization(&agent_organization, signer_public_key, TRANSACTOR)?;
-
-        // Verify the certifying_body_id is associated with a Certifying body
-        let mut certifying_body = get_organization(state, payload.get_certifying_body_id())?;
-
-        check_org_type(
-            &certifying_body,
-            proto::organization::Organization_Type::CERTIFYING_BODY,
-        )?;
-
-        // Verify the name is associated with an existing standard
-        let standard = match state.get_standard(&payload.get_standard_id()) {
-            Ok(Some(standard)) => Ok(standard),
-            Ok(None) => Err(ApplyError::InvalidTransaction(format!(
-                "No standard with ID {} exists",
-                payload.get_standard_id()
-            ))),
-            Err(err) => Err(err),
-        }?;
-
-        // Verify the agent's organization created the standard
-        if agent.get_organization_id() != standard.get_organization_id() {
-            return Err(ApplyError::InvalidTransaction(format!(
-                "Signer's associated organization did not create the certification standard {}",
-                standard.get_name()
-            )));
-        }
-
-        let mut certifying_body_details = certifying_body.get_certifying_body_details().clone();
-
-        let mut accreditations = certifying_body_details.get_accreditations().to_vec();
-
-        let standard_versions = standard.get_versions().to_vec();
-        let latest_standard_version = match standard_versions.last() {
-            Some(valid_version) => valid_version,
-            None => {
-                return Err(ApplyError::InvalidTransaction(format!(
-                    "Invalid version for Standard {}",
-                    standard.get_id()
-                )));
-            }
-        };
-
-        let standard_compare =
-            |accreditation: &proto::organization::CertifyingBody_Accreditation| -> bool {
-                accreditation.get_standard_id() == payload.get_standard_id()
-                    && accreditation.get_standard_version() == latest_standard_version.get_version()
-            };
-
-        if accreditations.iter().any(standard_compare) {
-            return Err(ApplyError::InvalidTransaction(format!(
-                "Accreditation for Standard {}, version {} already exists",
-                payload.get_standard_id(),
-                latest_standard_version.get_version().to_string(),
-            )));
-        }
-
-        // Verify the date
-        let valid_from = payload.get_valid_from();
-        if valid_from < latest_standard_version.get_approval_date() {
-            return Err(ApplyError::InvalidTransaction(
-                "Invalid date, Standard is not valid from this date".to_string(),
-            ));
-        }
-
-        let valid_to = payload.get_valid_to();
-        if valid_to < valid_from {
-            return Err(ApplyError::InvalidTransaction(
-                "Invalid dates. Valid to must be after valid from".to_string(),
-            ));
-        }
-
-        let mut new_accreditation = proto::organization::CertifyingBody_Accreditation::new();
-        new_accreditation.set_standard_id(payload.get_standard_id().to_string());
-        new_accreditation.set_standard_version(latest_standard_version.get_version().to_string());
-        new_accreditation.set_accreditor_id(agent_organization.get_id().to_string());
-        new_accreditation.set_valid_to(payload.get_valid_to());
-        new_accreditation.set_valid_from(payload.get_valid_from());
-
-        accreditations.push(new_accreditation);
-        certifying_body_details
-            .set_accreditations(protobuf::RepeatedField::from_vec(accreditations));
-
-        certifying_body.set_certifying_body_details(certifying_body_details);
-
-        // Put updated CertifyingBody in state
-        state.set_organization(payload.get_certifying_body_id(), certifying_body)?;
-
-        Ok(())
+        standard::accredit_certifying_body(payload, state, signer_public_key)
     }
 
     /// Creates a new assertion and submits it to state along with the object of the assertion
@@ -796,271 +279,8 @@ impl CertTransactionHandler {
         state: &mut CertState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
-        // Verify the signer
-        let agent = get_agent(state, signer_public_key)?;
-        // Check agent's organization
-        check_agent_has_org(&agent)?;
-
-        let organization = get_organization(state, agent.get_organization_id())?;
-
-        check_org_type(
-            &organization,
-            proto::organization::Organization_Type::INGESTION,
-        )?;
-
-        // Validate that agent is a transactor
-        check_authorization(&organization, signer_public_key, TRANSACTOR)?;
-
-        match state.get_assertion(payload.get_assertion_id()) {
-            Ok(Some(_)) => Err(ApplyError::InvalidTransaction(format!(
-                "Assertion with ID {} already exists",
-                payload.get_assertion_id()
-            ))),
-            Ok(None) => Ok(()),
-            Err(err) => Err(err),
-        }?;
-
-        let (assertion_type, object_id, data_id) = if payload.has_new_factory() {
-            let factory_assertion = payload.get_new_factory();
-            // contains new data about existing factory
-            let new_organization =
-                make_organization(&factory_assertion.get_factory(), signer_public_key);
-            // Put organization in state
-            state.set_organization(factory_assertion.get_factory().get_id(), new_organization)?;
-            (
-                proto::assertion::Assertion_Type::FACTORY,
-                factory_assertion.get_factory().get_id(),
-                Some(factory_assertion.get_existing_factory_id()),
-            )
-        } else if payload.has_new_certificate() {
-            let certificate = payload.get_new_certificate();
-            // Validate current issue date
-            if certificate.get_valid_to() < certificate.get_valid_from() {
-                return Err(ApplyError::InvalidTransaction(
-                    "Invalid dates. Valid to must be after valid from".to_string(),
-                ));
-            }
-            // Ensure the certificate has an independent source and the factory exists
-            match certificate.get_source() {
-                proto::payload::IssueCertificateAction_Source::INDEPENDENT => {
-                    // will error if the factory does not exist
-                    get_organization(state, &certificate.get_factory_id())?;
-                }
-                _ => {
-                    return Err(ApplyError::InvalidTransaction(
-                        "The `IssueCertificateAction_Source` of a Certificate Assertion must be
-                        `INDEPENDENT` to indicate no request was made"
-                            .to_string(),
-                    ));
-                }
-            }
-
-            let standard = match state.get_standard(&certificate.get_standard_id())? {
-                Some(standard) => Ok(standard),
-                None => Err(ApplyError::InvalidTransaction(format!(
-                    "Standard {} does not exist",
-                    certificate.get_standard_id()
-                ))),
-            }?;
-
-            let versions = standard.get_versions().to_vec();
-            let new_certificate = make_certificate(
-                certificate,
-                agent.get_organization_id(),
-                versions.last().unwrap().get_version(),
-            );
-            state.set_certificate(certificate.get_id(), new_certificate)?;
-            (
-                proto::assertion::Assertion_Type::CERTIFICATE,
-                certificate.get_id(),
-                None,
-            )
-        } else if payload.has_new_standard() {
-            let new_standard =
-                make_standard(payload.get_new_standard(), agent.get_organization_id());
-            state.set_standard(payload.get_new_standard().get_standard_id(), new_standard)?;
-            (
-                proto::assertion::Assertion_Type::STANDARD,
-                payload.get_new_standard().get_standard_id(),
-                None,
-            )
-        } else {
-            return Err(ApplyError::InvalidTransaction(
-                "AssertAction did not contain any valid data".to_string(),
-            ));
-        };
-        // Last step: add assertion to state that references the previous data
-        let mut assertion = proto::assertion::Assertion::new();
-        assertion.set_id(payload.get_assertion_id().to_string());
-        assertion.set_assertor_pub_key(signer_public_key.to_string());
-        assertion.set_assertion_type(assertion_type);
-        assertion.set_object_id(object_id.to_string());
-        // only need data_id if existing_factory_id
-        if let Some(data_id) = data_id {
-            assertion.set_data_id(data_id.to_string());
-        }
-        state.set_assertion(payload.get_assertion_id(), assertion)?;
-        Ok(())
+        assertion::create(payload, state, signer_public_key)
     }
-}
-
-/// Getter helper functions that wrap state getters
-
-/// Helper to get agent from state based on public key
-fn get_agent(
-    state: &mut CertState,
-    signer_public_key: &str,
-) -> Result<proto::agent::Agent, ApplyError> {
-    match state.get_agent(signer_public_key) {
-        Ok(Some(agent)) => Ok(agent),
-        Ok(None) => Err(ApplyError::InvalidTransaction(format!(
-            "No agent with public key {} exists",
-            signer_public_key
-        ))),
-        Err(err) => Err(err),
-    }
-}
-
-/// Helper to get organization from state based on id
-fn get_organization(
-    state: &mut CertState,
-    organization_id: &str,
-) -> Result<proto::organization::Organization, ApplyError> {
-    match state.get_organization(organization_id) {
-        Ok(Some(organization)) => Ok(organization),
-        Ok(None) => Err(ApplyError::InvalidTransaction(format!(
-            "No organization with ID {} exists",
-            organization_id
-        ))),
-        Err(err) => Err(err),
-    }
-}
-
-/// Helper to check whether the agent has the proper authorization
-fn check_authorization(
-    organization: &proto::organization::Organization,
-    signer_public_key: &str,
-    role: proto::organization::Organization_Authorization_Role,
-) -> Result<(), ApplyError> {
-    let is_role = organization
-        .get_authorizations()
-        .iter()
-        .find(|authorization| {
-            authorization.get_public_key() == signer_public_key && authorization.get_role() == role
-        });
-    if is_role.is_none() {
-        return Err(ApplyError::InvalidTransaction(format!(
-            "Agent is not authorized as a{} for organization with ID: {}",
-            match role {
-                ADMIN => "n admin",
-                TRANSACTOR => " transactor",
-                _ => "n unset role",
-            },
-            organization.get_id()
-        )));
-    }
-    Ok(())
-}
-
-/// Helper to check whether the agent is a member of an organization
-fn check_agent_has_org(agent: &proto::agent::Agent) -> Result<(), ApplyError> {
-    if agent.get_organization_id().is_empty() {
-        return Err(ApplyError::InvalidTransaction(format!(
-            "Agent is not associated with an organization: {}",
-            agent.get_organization_id(),
-        )));
-    }
-    Ok(())
-}
-
-/// Helper to check whether the organization is the expected type
-fn check_org_type(
-    organization: &proto::organization::Organization,
-    org_type: proto::organization::Organization_Type,
-) -> Result<(), ApplyError> {
-    if organization.get_organization_type() != org_type {
-        return Err(ApplyError::InvalidTransaction(format!(
-            "Organization {} is type {:?} but this action can only be performed by type {:?}",
-            organization.get_id(),
-            organization.get_organization_type(),
-            org_type
-        )));
-    }
-    Ok(())
-}
-
-fn make_organization(
-    payload: &proto::payload::CreateOrganizationAction,
-    signer_public_key: &str,
-) -> proto::organization::Organization {
-    let mut new_organization = proto::organization::Organization::new();
-    new_organization.set_id(payload.get_id().to_string());
-    new_organization.set_name(payload.get_name().to_string());
-    new_organization.set_organization_type(payload.get_organization_type());
-    new_organization.set_contacts(protobuf::RepeatedField::from_vec(
-        payload.get_contacts().to_vec(),
-    ));
-
-    let mut admin_authorization = proto::organization::Organization_Authorization::new();
-    admin_authorization.set_public_key(signer_public_key.to_string());
-    admin_authorization.set_role(ADMIN);
-
-    let mut transactor_authorization = proto::organization::Organization_Authorization::new();
-    transactor_authorization.set_public_key(signer_public_key.to_string());
-    transactor_authorization.set_role(TRANSACTOR);
-
-    new_organization.set_authorizations(::protobuf::RepeatedField::from_vec(vec![
-        admin_authorization,
-        transactor_authorization,
-    ]));
-
-    if payload.get_organization_type() == proto::organization::Organization_Type::FACTORY {
-        let mut factory_details = proto::organization::Factory::new();
-        factory_details.set_address(payload.get_address().clone());
-        new_organization.set_factory_details(factory_details);
-    }
-    new_organization
-}
-
-fn make_certificate(
-    payload: &proto::payload::IssueCertificateAction,
-    certifying_body_id: &str,
-    standard_version: &str,
-) -> proto::certificate::Certificate {
-    // Create certificate
-    let mut new_certificate = proto::certificate::Certificate::new();
-    new_certificate.set_id(payload.get_id().to_string());
-    new_certificate.set_certifying_body_id(certifying_body_id.to_string());
-    new_certificate.set_factory_id(payload.get_factory_id().to_string());
-    new_certificate.set_standard_id(payload.get_standard_id().to_string());
-    new_certificate.set_standard_version(standard_version.to_string());
-    new_certificate.set_certificate_data(::protobuf::RepeatedField::from_vec(
-        payload.get_certificate_data().to_vec(),
-    ));
-    new_certificate.set_valid_from(payload.get_valid_from());
-    new_certificate.set_valid_to(payload.get_valid_to());
-
-    new_certificate
-}
-
-fn make_standard(
-    payload: &proto::payload::CreateStandardAction,
-    org_id: &str,
-) -> proto::standard::Standard {
-    let mut new_standard_version = proto::standard::Standard_StandardVersion::new();
-    new_standard_version.set_version(payload.version.clone());
-    new_standard_version.set_description(payload.description.clone());
-    new_standard_version.set_link(payload.link.clone());
-    new_standard_version.set_approval_date(payload.approval_date.clone());
-
-    let mut new_standard = proto::standard::Standard::new();
-    new_standard.set_id(payload.standard_id.clone());
-    new_standard.set_name(payload.name.clone());
-    new_standard.set_organization_id(org_id.to_string());
-    new_standard.set_versions(protobuf::RepeatedField::from_vec(vec![
-        new_standard_version,
-    ]));
-    new_standard
 }
 
 impl TransactionHandler for CertTransactionHandler {
@@ -2269,18 +1489,18 @@ mod tests {
         assert!(result.is_err());
 
         assert_eq!(
-            format!("{:?}", result.unwrap_err()),
-            format!(
-                "{:?}",
-                ApplyError::InvalidTransaction(String::from(
-                    format!(
-                        "Organization not_even_a_factory is type {:?} but this action can only be performed by type {:?}",
-                        proto::organization::Organization_Type::STANDARDS_BODY,
-                        proto::organization::Organization_Type::FACTORY
-                    )
-                ,))
-            )
-        )
+      format!("{:?}", result.unwrap_err()),
+      format!(
+        "{:?}",
+        ApplyError::InvalidTransaction(String::from(
+          format!(
+            "Organization not_even_a_factory is type {:?} but this action can only be performed by type {:?}",
+            proto::organization::Organization_Type::STANDARDS_BODY,
+            proto::organization::Organization_Type::FACTORY
+          )
+        ,))
+      )
+    )
     }
 
     #[test]
@@ -2662,7 +1882,7 @@ mod tests {
                 "{:?}",
                 ApplyError::InvalidTransaction(String::from(format!(
                     "Once CLOSED or CERTIFIED, the request status can not be modified again.
-                Status: CLOSED"
+        Status: CLOSED"
                 ),))
             )
         );
@@ -2730,7 +1950,7 @@ mod tests {
                 "{:?}",
                 ApplyError::InvalidTransaction(String::from(format!(
                     "Once CLOSED or CERTIFIED, the request status can not be modified again.
-                Status: CERTIFIED"
+        Status: CERTIFIED"
                 ),))
             )
         );
@@ -2963,14 +2183,12 @@ mod tests {
             format!("{:?}", result.unwrap_err()),
             format!(
                 "{:?}",
-                ApplyError::InvalidTransaction(String::from(
-                    format!(
-                        "Organization {} is type {:?} but this action can only be performed by type {:?}",
-                        CERT_ORG_ID,
-                        proto::organization::Organization_Type::CERTIFYING_BODY,
-                        proto::organization::Organization_Type::STANDARDS_BODY
-                    )
-                ))
+                ApplyError::InvalidTransaction(String::from(format!(
+            "Organization {} is type {:?} but this action can only be performed by type {:?}",
+            CERT_ORG_ID,
+            proto::organization::Organization_Type::CERTIFYING_BODY,
+            proto::organization::Organization_Type::STANDARDS_BODY
+          )))
             )
         )
     }
@@ -3450,7 +2668,7 @@ mod tests {
                 "{:?}",
                 ApplyError::InvalidTransaction(String::from(
                     "The `IssueCertificateAction_Source` of a Certificate Assertion must be
-                        `INDEPENDENT` to indicate no request was made"
+            `INDEPENDENT` to indicate no request was made"
                 ))
             )
         )

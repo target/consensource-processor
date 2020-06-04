@@ -4,40 +4,42 @@ extern crate common;
 extern crate protobuf;
 
 cfg_if! {
-    if #[cfg(target_arch = "wasm32")] {
-        extern crate sabre_sdk;
-    } else {
-        #[macro_use]
-        extern crate clap;
-        #[macro_use]
-        extern crate log;
-        extern crate log4rs;
-        extern crate sawtooth_sdk;
-        use std::process;
-        use log::LevelFilter;
-        use log4rs::append::console::ConsoleAppender;
-        use log4rs::config::{Appender, Config, Root};
-        use log4rs::encode::pattern::PatternEncoder;
-        use sawtooth_sdk::processor::TransactionProcessor;
-        use handler::CertTransactionHandler;
-    }
+  if #[cfg(target_arch = "wasm32")] {
+    extern crate sabre_sdk;
+  } else {
+    #[macro_use]
+    extern crate clap;
+    #[macro_use]
+    extern crate log;
+    extern crate log4rs;
+    extern crate sawtooth_sdk;
+    use std::process;
+    use log::LevelFilter;
+    use log4rs::append::console::ConsoleAppender;
+    use log4rs::config::{Appender, Config, Root};
+    use log4rs::encode::pattern::PatternEncoder;
+    use sawtooth_sdk::processor::TransactionProcessor;
+    use transaction_handler::handler::CertTransactionHandler;
+  }
 }
 
-mod handler;
 mod payload;
 mod state;
+mod transaction_handler;
+
+use transaction_handler::handler;
 
 /// Standard entry point
 #[cfg_attr(tarpaulin, skip)]
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
     let matches = clap_app!(item =>
-        (version: crate_version!())
-        (about: "Cert_registry Transaction Processor (Rust)")
-        (@arg connect: -C --connect +takes_value
-         "connection endpoint for validator")
-        (@arg verbose: -v --verbose +multiple
-         "increase output verbosity"))
+    (version: crate_version!())
+    (about: "Cert_registry Transaction Processor (Rust)")
+    (@arg connect: -C --connect +takes_value
+     "connection endpoint for validator")
+    (@arg verbose: -v --verbose +multiple
+     "increase output verbosity"))
     .get_matches();
 
     let endpoint = matches
@@ -79,12 +81,12 @@ fn main() {
         }
     }
 
-    let handler = CertTransactionHandler::new();
+    let cousensource_transaction_handler = handler::CertTransactionHandler::new();
     let mut processor = TransactionProcessor::new(endpoint);
 
     info!("Console logging level: {}", console_log_level);
 
-    processor.add_handler(&handler);
+    processor.add_handler(&cousensource_transaction_handler);
     processor.start();
 }
 
