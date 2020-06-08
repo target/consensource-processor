@@ -1,5 +1,5 @@
 /*
- * CertTransactionHandler
+ * ConsensourceTransactionHandler
  */
 cfg_if! {
   if #[cfg(target_arch = "wasm32")] {
@@ -21,19 +21,19 @@ use common::proto;
 use common::proto::organization::Organization_Authorization_Role::{ADMIN, TRANSACTOR};
 use payload::{Action, CertPayload};
 use protobuf;
-use state::CertState;
+use state::ConsensourceState;
 
 use transaction_handler::{agent, assertion, certificate, factory, organization, standard};
 
-pub struct CertTransactionHandler {
+pub struct ConsensourceTransactionHandler {
     family_name: String,
     family_versions: Vec<String>,
     namespaces: Vec<String>,
 }
 
-impl CertTransactionHandler {
-    pub fn new() -> CertTransactionHandler {
-        CertTransactionHandler {
+impl ConsensourceTransactionHandler {
+    pub fn new() -> ConsensourceTransactionHandler {
+        ConsensourceTransactionHandler {
             family_name: addressing::FAMILY_NAMESPACE.to_string(),
             family_versions: vec![addressing::FAMILY_VERSION.to_string()],
             namespaces: vec![addressing::get_family_namespace_prefix()],
@@ -50,7 +50,7 @@ impl CertTransactionHandler {
     pub fn create_agent(
         &self,
         payload: &proto::payload::CreateAgentAction,
-        state: &mut CertState,
+        state: &mut ConsensourceState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         agent::create(payload, state, signer_public_key)
@@ -69,7 +69,7 @@ impl CertTransactionHandler {
     pub fn create_organization(
         &self,
         payload: &proto::payload::CreateOrganizationAction,
-        state: &mut CertState,
+        state: &mut ConsensourceState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         organization::create(payload, state, signer_public_key)
@@ -89,7 +89,7 @@ impl CertTransactionHandler {
     pub fn update_organization(
         &self,
         payload: &proto::payload::UpdateOrganizationAction,
-        state: &mut CertState,
+        state: &mut ConsensourceState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         organization::update(payload, state, signer_public_key)
@@ -112,7 +112,7 @@ impl CertTransactionHandler {
     pub fn authorize_agent(
         &self,
         payload: &proto::payload::AuthorizeAgentAction,
-        state: &mut CertState,
+        state: &mut ConsensourceState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         agent::authorize(payload, state, signer_public_key)
@@ -138,7 +138,7 @@ impl CertTransactionHandler {
     pub fn issue_certificate(
         &self,
         payload: &proto::payload::IssueCertificateAction,
-        state: &mut CertState,
+        state: &mut ConsensourceState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         certificate::issue(payload, state, signer_public_key)
@@ -160,7 +160,7 @@ impl CertTransactionHandler {
     pub fn open_request(
         &self,
         payload: &proto::payload::OpenRequestAction,
-        state: &mut CertState,
+        state: &mut ConsensourceState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         factory::open_request(payload, state, signer_public_key)
@@ -183,7 +183,7 @@ impl CertTransactionHandler {
     pub fn change_request_status(
         &self,
         payload: &proto::payload::ChangeRequestStatusAction,
-        state: &mut CertState,
+        state: &mut ConsensourceState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         factory::change_request_status(payload, state, signer_public_key)
@@ -205,7 +205,7 @@ impl CertTransactionHandler {
     pub fn create_standard(
         &self,
         payload: &proto::payload::CreateStandardAction,
-        state: &mut CertState,
+        state: &mut ConsensourceState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         standard::create(payload, state, signer_public_key)
@@ -228,7 +228,7 @@ impl CertTransactionHandler {
     pub fn update_standard(
         &self,
         payload: &proto::payload::UpdateStandardAction,
-        state: &mut CertState,
+        state: &mut ConsensourceState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         standard::update(payload, state, signer_public_key)
@@ -252,7 +252,7 @@ impl CertTransactionHandler {
     pub fn accredit_certifying_body(
         &self,
         payload: &proto::payload::AccreditCertifyingBodyAction,
-        state: &mut CertState,
+        state: &mut ConsensourceState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         standard::accredit_certifying_body(payload, state, signer_public_key)
@@ -276,14 +276,14 @@ impl CertTransactionHandler {
     pub fn create_assertion(
         &self,
         payload: &proto::payload::AssertAction,
-        state: &mut CertState,
+        state: &mut ConsensourceState,
         signer_public_key: &str,
     ) -> Result<(), ApplyError> {
         assertion::create(payload, state, signer_public_key)
     }
 }
 
-impl TransactionHandler for CertTransactionHandler {
+impl TransactionHandler for ConsensourceTransactionHandler {
     fn family_name(&self) -> String {
         self.family_name.clone()
     }
@@ -315,7 +315,7 @@ impl TransactionHandler for CertTransactionHandler {
 
         // Return an action enum as the payload
         let payload = CertPayload::new(request.get_payload())?;
-        let mut state = CertState::new(context);
+        let mut state = ConsensourceState::new(context);
 
         match payload.get_action() {
             Action::CreateAgent(payload) => {
@@ -367,7 +367,7 @@ fn apply(
     request: &TpProcessRequest,
     context: &mut dyn TransactionContext,
 ) -> Result<bool, ApplyError> {
-    let handler = CertTransactionHandler::new();
+    let handler = ConsensourceTransactionHandler::new();
     match handler.apply(request, context) {
         Ok(_) => Ok(true),
         Err(err) => Err(err),
@@ -459,8 +459,8 @@ mod tests {
     /// Test that if CreateAgentAction is valid an OK is returned and a new Agent is added to state
     fn test_create_agent_handler_valid() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         let action = make_agent_create_action();
 
         assert!(transaction_handler
@@ -479,8 +479,8 @@ mod tests {
     /// Test that CreateAgentAction is invalid if an agent already exists
     fn test_create_agent_handler_agent_already_exists() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         let action = make_agent_create_action();
 
         transaction_handler
@@ -507,8 +507,8 @@ mod tests {
     /// Test that if CreateOrganizationAction is valid an OK is returned and a new Organization is added to state
     fn test_create_organization_handler_valid() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -542,8 +542,8 @@ mod tests {
     #[test]
     fn test_create_organization_handler_organization_already_exists() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -579,8 +579,8 @@ mod tests {
     /// Test that CreateOrganizationAction fails when no agent is associated with the supplied public key
     fn test_create_organization_handler_no_agent_with_public_key() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -615,8 +615,8 @@ mod tests {
     /// Test that if UpdateOrganizationAction is valid an OK is returned and the Organization is updated in state
     fn test_update_organization_handler_valid() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -656,8 +656,8 @@ mod tests {
     /// Test that UpdateOrganizationAction fails when no agent is associated with the supplied public key
     fn test_update_organization_handler_no_agent_with_public_key() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -697,8 +697,8 @@ mod tests {
     /// Test that UpdateOrganizationAction fails when unassociated agent updates the organization
     fn test_update_organization_handler_agent_not_associated_with_organization() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -739,8 +739,8 @@ mod tests {
     /// Test that if AuthorizeAgentAction is valid an OK is returned and a new Authorization is added to state
     fn test_authorize_agent_handler_valid() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -783,8 +783,8 @@ mod tests {
     /// Test if AuthorizeAgentAction fails if there is no agent with the public key to authorize
     fn test_authorize_agent_handler_no_agent_with_public_key() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -821,8 +821,8 @@ mod tests {
     /// Test if AuthorizeAgentAction fails if there is no agent with the public key to authorize
     fn test_authorize_agent_handler_agent_not_associated_with_organization() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -864,8 +864,8 @@ mod tests {
     /// Test that if IssueCertificateAction is valid an OK is returned and a new Certificate is added to state
     fn test_issue_certificate_handler_valid() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let standard_agent_action = make_agent_create_action();
         transaction_handler
@@ -934,8 +934,8 @@ mod tests {
     /// Test that IssueCertificateAction fails because a certificate has already been issued
     fn test_issue_certificate_handler_certificate_already_exists() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let standard_agent_action = make_agent_create_action();
         transaction_handler
@@ -1013,8 +1013,8 @@ mod tests {
     /// Test that IssueCertificateAction fails because there is no agent with public key to accredit the cert body
     fn test_issue_certificate_handler_no_agent_with_public_key() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let standard_agent_action = make_agent_create_action();
         transaction_handler
@@ -1077,8 +1077,8 @@ mod tests {
     /// Test that if CreateStandardAction is valid an OK is returned and a new Standard is added to state
     fn test_create_standard_handler_valid() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -1110,8 +1110,8 @@ mod tests {
     #[test]
     fn test_create_standard_handler_standard_already_exists() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -1149,8 +1149,8 @@ mod tests {
     /// Test that if UpdateStandardAction is valid an OK is returned and the Standard is changed in state
     fn test_update_standard_handler_valid() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -1188,8 +1188,8 @@ mod tests {
     /// Test that UpdateStandardAction fails because standard to update does not exist
     fn test_update_standard_handler_standard_does_not_exist() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -1227,8 +1227,8 @@ mod tests {
     /// Test that UpdateStandardAction fails if standard version already exists
     fn test_update_standard_handler_version_already_exists() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -1269,8 +1269,8 @@ mod tests {
     /// Test that UpdateStandardAction fails if there is no agent with the public key to update the standard
     fn test_update_standard_handler_no_agent_with_pub_key() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -1312,8 +1312,8 @@ mod tests {
     /// Test that UpdateStandardAction fails because agent is not associated with org
     fn test_update_standard_handler_agent_not_associated_with_organization() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -1360,8 +1360,8 @@ mod tests {
     /// Test that if OpenRequestAction is valid an OK is returned and a new Request is added to state
     fn test_open_request_handler_valid() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -1412,8 +1412,8 @@ mod tests {
     /// Test that OpenRequestAction fails if there is no agent with provided public key
     fn test_open_request_handler_no_agent_with_public_key() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
 
         let action = make_open_request_action();
 
@@ -1437,8 +1437,8 @@ mod tests {
     /// Test that OpenRequestAction fails if there is no organization
     fn test_open_request_handler_no_organization_with_id_exists() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
 
         //add agent
         let agent_action = make_agent_create_action();
@@ -1465,8 +1465,8 @@ mod tests {
     /// Test that OpenRequestAction fails if the org is not a factory
     fn test_open_request_handler_organization_is_not_a_factory() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
 
         //add agent
         let agent_action = make_agent_create_action();
@@ -1507,8 +1507,8 @@ mod tests {
     /// Test that OpenRequestAction fails ir request is already open/exists
     fn test_open_request_handler_request_already_exists() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -1566,8 +1566,8 @@ mod tests {
     /// Test that OpenRequestAction fails if no standard exists
     fn test_open_request_handler_no_standard_exists() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -1617,8 +1617,8 @@ mod tests {
     /// Test that if ChangeRequestStatusAction is valid an OK is returned and the Request is updated in state
     fn test_change_request_status_handler_valid() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -1674,8 +1674,8 @@ mod tests {
     /// Test that ChangeRequestStatusAction fails because the request does not exist
     fn test_change_request_status_handler_request_does_not_exist() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
 
         let action = make_change_request_action();
 
@@ -1699,8 +1699,8 @@ mod tests {
     /// Test that ChangeRequestStatusAction fails because there is no agent public key
     fn test_change_request_status_handler_no_agent_public_key() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -1763,8 +1763,8 @@ mod tests {
     /// Test that ChangeRequestStatusAction fails because an agent is not authorized
     fn test_change_request_status_handler_agent_is_not_authorized() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -1824,8 +1824,8 @@ mod tests {
     /// Test that ChangeRequestStatusAction fails because closed requests cannot be modified
     fn test_change_request_status_handler_cannot_modify_closed_requests() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -1892,8 +1892,8 @@ mod tests {
     /// Test that ChangeRequestStatusAction fails because certified requests cannot be modified
     fn test_change_request_status_handler_cannot_modify_certified_requests() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -1960,8 +1960,8 @@ mod tests {
     /// Test that if AccreditCertifyingBodyAction is valid an OK is returned and a new Accreditation is added to state
     fn test_accredit_certifying_body_handler_valid() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -2017,8 +2017,8 @@ mod tests {
     /// Test that AccreditCertifyingBodyAction fails because there is no agent with public key exists
     fn test_accredit_certifying_body_handler_no_agent_with_public_key() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -2076,8 +2076,8 @@ mod tests {
     /// Test that AccreditCertifyingBodyAction fails because agent is not associated with an organization
     fn test_accredit_certifying_body_handler_agent_not_associated_with_organization() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -2138,8 +2138,8 @@ mod tests {
     /// Test that AccreditCertifyingBodyAction fails because non standards body organizations cannot perform accreditations
     fn test_accredit_certifying_body_handler_organization_type_cannot_perform_accreditation() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -2197,8 +2197,8 @@ mod tests {
     /// Test that AccreditCertifyingBodyAction fails because no standard was ever created
     fn test_accredit_certifying_body_handler_no_standard_with_id_exists() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -2251,8 +2251,8 @@ mod tests {
     /// Test that AccreditCertifyingBodyAction fails because the accredited standard already exists
     fn test_accredit_certifying_body_handler_accredited_standard_already_exists() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -2312,8 +2312,8 @@ mod tests {
     /// Test that AccreditCertifyingBodyAction fails because the accreditation dates are invalid
     fn test_accredit_certifying_body_handler_invalid_dates() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
         //add agent
         let agent_action = make_agent_create_action();
         transaction_handler
@@ -2368,8 +2368,8 @@ mod tests {
     /// Test that if AssertAction for a new Factory is valid an Ok is returned and both an Assertion and an Organization are added to state
     fn test_assert_action_new_factory_handler_valid() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
 
         //add agent
         let agent_action = make_agent_create_action();
@@ -2425,8 +2425,8 @@ mod tests {
     /// Test that if AssertAction for a new Certificate is valid an Ok is returned and both an Assertion and a Certificate are added to state
     fn test_assert_action_new_certificate_handler_valid() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
 
         //add agent
         let agent_action = make_agent_create_action();
@@ -2485,8 +2485,8 @@ mod tests {
     /// Test that if AssertAction for a new Standard is valid an Ok is returned and both an Assertion and a Standard are added to state
     fn test_assert_action_new_standard_handler_valid() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
 
         //add agent
         let agent_action = make_agent_create_action();
@@ -2535,8 +2535,8 @@ mod tests {
     /// Test that AssertAction fails because the assertion with the specified ID already exists
     fn test_assert_action_handler_assertion_already_exists() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
 
         //add agent
         let agent_action = make_agent_create_action();
@@ -2579,8 +2579,8 @@ mod tests {
     /// Test that AssertAction fails because certificate dates are invalid
     fn test_assert_action_handler_assertion_contains_invalid_dates() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
 
         //add agent
         let agent_action = make_agent_create_action();
@@ -2628,8 +2628,8 @@ mod tests {
     /// Test that AssertAction fails because certificate source is unset
     fn test_assert_action_handler_assertion_certificate_contains_no_source() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
 
         //add agent
         let agent_action = make_agent_create_action();
@@ -2678,8 +2678,8 @@ mod tests {
     /// Test that AssertAction fails because the specified standard does not exist
     fn test_assert_action_new_standard_handler_standard_does_not_exist() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
-        let transaction_handler = CertTransactionHandler::new();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        let transaction_handler = ConsensourceTransactionHandler::new();
 
         //add agent
         let agent_action = make_agent_create_action();

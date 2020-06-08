@@ -8,14 +8,14 @@ cfg_if! {
 
 use common::proto;
 use common::proto::organization::Organization_Authorization_Role::{ADMIN, TRANSACTOR};
-use state::CertState;
+use state::ConsensourceState;
 
 use transaction_handler::agent;
 
 /// Helper to create organization in state
 pub fn create(
     payload: &proto::payload::CreateOrganizationAction,
-    state: &mut CertState,
+    state: &mut ConsensourceState,
     signer_public_key: &str,
 ) -> Result<(), ApplyError> {
     match state.get_organization(payload.get_id()) {
@@ -53,7 +53,7 @@ pub fn create(
 /// Helper to update organization from state
 pub fn update(
     payload: &proto::payload::UpdateOrganizationAction,
-    state: &mut CertState,
+    state: &mut ConsensourceState,
     signer_public_key: &str,
 ) -> Result<(), ApplyError> {
     // Check agent
@@ -90,7 +90,7 @@ pub fn update(
 
 /// Helper to get organization from state based on id
 pub fn get(
-    state: &mut CertState,
+    state: &mut ConsensourceState,
     organization_id: &str,
 ) -> Result<proto::organization::Organization, ApplyError> {
     match state.get_organization(organization_id) {

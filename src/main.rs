@@ -19,7 +19,6 @@ cfg_if! {
     use log4rs::config::{Appender, Config, Root};
     use log4rs::encode::pattern::PatternEncoder;
     use sawtooth_sdk::processor::TransactionProcessor;
-    use transaction_handler::handler::CertTransactionHandler;
   }
 }
 
@@ -81,7 +80,7 @@ fn main() {
         }
     }
 
-    let cousensource_transaction_handler = handler::CertTransactionHandler::new();
+    let cousensource_transaction_handler = handler::ConsensourceTransactionHandler::new();
     let mut processor = TransactionProcessor::new(endpoint);
 
     info!("Console logging level: {}", console_log_level);

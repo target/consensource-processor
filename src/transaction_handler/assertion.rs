@@ -8,13 +8,13 @@ cfg_if! {
 
 use common::proto;
 use common::proto::organization::Organization_Authorization_Role::TRANSACTOR;
-use state::CertState;
+use state::ConsensourceState;
 
 use transaction_handler::{agent, certificate, organization, standard};
 
 pub fn create(
     payload: &proto::payload::AssertAction,
-    state: &mut CertState,
+    state: &mut ConsensourceState,
     signer_public_key: &str,
 ) -> Result<(), ApplyError> {
     // Verify the signer

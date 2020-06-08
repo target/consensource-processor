@@ -8,14 +8,14 @@ cfg_if! {
 
 use common::proto;
 use common::proto::organization::Organization_Authorization_Role::ADMIN;
-use state::CertState;
+use state::ConsensourceState;
 
 use transaction_handler::organization;
 
 /// Helper to create agent in state
 pub fn create(
     payload: &proto::payload::CreateAgentAction,
-    state: &mut CertState,
+    state: &mut ConsensourceState,
     signer_public_key: &str,
 ) -> Result<(), ApplyError> {
     match state.get_agent(signer_public_key) {
@@ -38,7 +38,7 @@ pub fn create(
 
 /// Helper to get agent from state based on public key
 pub fn get(
-    state: &mut CertState,
+    state: &mut ConsensourceState,
     signer_public_key: &str,
 ) -> Result<proto::agent::Agent, ApplyError> {
     match state.get_agent(signer_public_key) {
@@ -53,7 +53,7 @@ pub fn get(
 
 pub fn authorize(
     payload: &proto::payload::AuthorizeAgentAction,
-    state: &mut CertState,
+    state: &mut ConsensourceState,
     signer_public_key: &str,
 ) -> Result<(), ApplyError> {
     // Validate an agent associated with the signer public key exists

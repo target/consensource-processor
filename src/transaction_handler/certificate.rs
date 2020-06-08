@@ -7,14 +7,14 @@ cfg_if! {
 }
 
 use common::proto;
-use common::proto::organization::Organization_Authorization_Role::{ADMIN, TRANSACTOR};
-use state::CertState;
+use common::proto::organization::Organization_Authorization_Role::TRANSACTOR;
+use state::ConsensourceState;
 
 use transaction_handler::{agent, organization};
 
 pub fn issue(
     payload: &proto::payload::IssueCertificateAction,
-    state: &mut CertState,
+    state: &mut ConsensourceState,
     signer_public_key: &str,
 ) -> Result<(), ApplyError> {
     // Verify that certificate ID is not already associated with a Certificate object

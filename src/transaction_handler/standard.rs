@@ -8,13 +8,13 @@ cfg_if! {
 
 use common::proto;
 use common::proto::organization::Organization_Authorization_Role::TRANSACTOR;
-use state::CertState;
+use state::ConsensourceState;
 
 use transaction_handler::{agent, organization};
 
 pub fn create(
     payload: &proto::payload::CreateStandardAction,
-    state: &mut CertState,
+    state: &mut ConsensourceState,
     signer_public_key: &str,
 ) -> Result<(), ApplyError> {
     // Verify that name is not already associated with a Standard object
@@ -50,7 +50,7 @@ pub fn create(
 
 pub fn update(
     payload: &proto::payload::UpdateStandardAction,
-    state: &mut CertState,
+    state: &mut ConsensourceState,
     signer_public_key: &str,
 ) -> Result<(), ApplyError> {
     // Verify that name is not already associated with a Standard object
@@ -114,7 +114,7 @@ pub fn update(
 
 pub fn accredit_certifying_body(
     payload: &proto::payload::AccreditCertifyingBodyAction,
-    state: &mut CertState,
+    state: &mut ConsensourceState,
     signer_public_key: &str,
 ) -> Result<(), ApplyError> {
     // Verify the signer

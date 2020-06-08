@@ -1,5 +1,5 @@
 /*
- * CertState
+ * ConsensourceState
  */
 
 cfg_if! {
@@ -130,14 +130,14 @@ interactor!(Request, make_request_address, RequestContainer, id);
 interactor!(Standard, make_standard_address, StandardContainer, id);
 interactor!(Assertion, make_assertion_address, AssertionContainer, id);
 
-pub struct CertState<'a> {
+pub struct ConsensourceState<'a> {
     context: &'a mut dyn TransactionContext,
 }
 
-impl<'a> CertState<'a> {
-    // Create new instance of CertState
-    pub fn new(context: &'a mut dyn TransactionContext) -> CertState {
-        CertState { context }
+impl<'a> ConsensourceState<'a> {
+    // Create new instance of ConsensourceState
+    pub fn new(context: &'a mut dyn TransactionContext) -> ConsensourceState {
+        ConsensourceState { context }
     }
 
     /// Fetches and deserializes an Agent's data from state
@@ -340,7 +340,7 @@ mod tests {
     // Test that if an agent does not exist in state, None is returned
     fn test_get_agent_none() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
+        let mut state = ConsensourceState::new(&mut transaction_context);
 
         let result = state.get_agent("test").unwrap();
         assert!(result.is_none())
@@ -350,7 +350,7 @@ mod tests {
     // Test that if an agent exist in state, Some(agent) is returned
     fn test_get_agent_some() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
+        let mut state = ConsensourceState::new(&mut transaction_context);
 
         assert!(state.set_agent("test", make_agent("test")).is_ok());
         let result = state.get_agent("test").unwrap();
@@ -361,7 +361,7 @@ mod tests {
     // Test that if an organization does not exist in state, None is returned
     fn test_get_organization_none() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
+        let mut state = ConsensourceState::new(&mut transaction_context);
 
         let result = state.get_organization("test").unwrap();
         assert!(result.is_none())
@@ -371,7 +371,7 @@ mod tests {
     // Test that if an organization exist in state, Some(organization) is returned
     fn test_get_organization_some() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
+        let mut state = ConsensourceState::new(&mut transaction_context);
 
         assert!(state
             .set_organization("test", make_organization("test"))
@@ -384,7 +384,7 @@ mod tests {
     // Test that if a certificate does not exist in state, None is returned
     fn test_get_certificate_none() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
+        let mut state = ConsensourceState::new(&mut transaction_context);
 
         let result = state.get_certificate("test").unwrap();
         assert!(result.is_none())
@@ -394,7 +394,7 @@ mod tests {
     // Test that if a certificate exist in state, Some(certificate) is returned
     fn test_get_certificate_some() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
+        let mut state = ConsensourceState::new(&mut transaction_context);
 
         assert!(state
             .set_certificate("test", make_certificate("test"))
@@ -407,7 +407,7 @@ mod tests {
     // Test that if a request does not exist in state, None is returned
     fn test_get_request_none() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
+        let mut state = ConsensourceState::new(&mut transaction_context);
 
         let result = state.get_request("test").unwrap();
         assert!(result.is_none())
@@ -417,7 +417,7 @@ mod tests {
     // Test that if a request exist in state, Some(request) is returned
     fn test_get_request_some() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
+        let mut state = ConsensourceState::new(&mut transaction_context);
 
         assert!(state.set_request("test", make_request("test")).is_ok());
         let result = state.get_request("test").unwrap();
@@ -428,7 +428,7 @@ mod tests {
     // Test that if a standard does not exist in state, None is returned
     fn test_get_standard_none() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
+        let mut state = ConsensourceState::new(&mut transaction_context);
 
         let result = state.get_standard("test").unwrap();
         assert!(result.is_none())
@@ -438,7 +438,7 @@ mod tests {
     // Test that if a standard exist in state, Some(standard) is returned
     fn test_get_standard_some() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
+        let mut state = ConsensourceState::new(&mut transaction_context);
 
         assert!(state.set_standard("test", make_standard("test")).is_ok());
         let result = state.get_standard("test").unwrap();
@@ -449,7 +449,7 @@ mod tests {
     // Test that if an assertion does not exist in state, None is returned
     fn test_get_assertion_none() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
+        let mut state = ConsensourceState::new(&mut transaction_context);
 
         let result = state.get_assertion("test").unwrap();
         assert!(result.is_none())
@@ -459,7 +459,7 @@ mod tests {
     // Test that if an assertion exists in state, Some(assertion) is returned
     fn test_get_assertion_some() {
         let mut transaction_context = MockTransactionContext::default();
-        let mut state = CertState::new(&mut transaction_context);
+        let mut state = ConsensourceState::new(&mut transaction_context);
 
         assert!(state.set_assertion("test", make_assertion("test")).is_ok());
         let result = state.get_assertion("test").unwrap();

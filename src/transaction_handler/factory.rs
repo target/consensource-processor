@@ -8,13 +8,13 @@ cfg_if! {
 
 use common::proto;
 use common::proto::organization::Organization_Authorization_Role::TRANSACTOR;
-use state::CertState;
+use state::ConsensourceState;
 
 use transaction_handler::{agent, organization};
 
 pub fn open_request(
     payload: &proto::payload::OpenRequestAction,
-    state: &mut CertState,
+    state: &mut ConsensourceState,
     signer_public_key: &str,
 ) -> Result<(), ApplyError> {
     // Validate that the signer associated with a factory
@@ -62,7 +62,7 @@ pub fn open_request(
 
 pub fn change_request_status(
     payload: &proto::payload::ChangeRequestStatusAction,
-    state: &mut CertState,
+    state: &mut ConsensourceState,
     signer_public_key: &str,
 ) -> Result<(), ApplyError> {
     // Verify that the request does exist
