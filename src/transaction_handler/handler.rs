@@ -18,9 +18,7 @@ cfg_if! {
 
 use common::addressing;
 use common::proto;
-use common::proto::organization::Organization_Authorization_Role::{ADMIN, TRANSACTOR};
 use payload::{Action, CertPayload};
-use protobuf;
 use state::ConsensourceState;
 
 use transaction_handler::{agent, assertion, certificate, factory, organization, standard};
@@ -384,6 +382,7 @@ pub unsafe fn entrypoint(payload: WasmPtr, signer: WasmPtr, signature: WasmPtr) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use common::proto::organization::Organization_Authorization_Role::{ADMIN, TRANSACTOR};
     use common::proto::payload::*;
 
     use std::cell::RefCell;
