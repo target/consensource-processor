@@ -10,7 +10,7 @@ use common::proto;
 use common::proto::organization::Organization_Authorization_Role::{ADMIN, TRANSACTOR};
 use state::ConsensourceState;
 
-use transaction_handler::agent;
+use handler::agent;
 
 /// Creates a new Organization and submits it to state
 ///
@@ -207,7 +207,7 @@ pub fn make_proto(
 mod tests {
     use super::*;
 
-    use transaction_handler::test_utils::*;
+    use handler::test_utils::*;
 
     #[test]
     /// Test that if CreateOrganizationAction is valid an OK is returned and a new Organization is added to state

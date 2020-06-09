@@ -22,11 +22,9 @@ cfg_if! {
   }
 }
 
+mod handler;
 mod payload;
 mod state;
-mod transaction_handler;
-
-use transaction_handler::handler;
 
 /// Standard entry point
 #[cfg_attr(tarpaulin, skip)]

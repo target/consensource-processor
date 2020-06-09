@@ -1,3 +1,11 @@
+pub mod agent;
+pub mod assertion;
+pub mod certificate;
+pub mod factory;
+pub mod organization;
+pub mod standard;
+pub mod test_utils;
+
 /*
  * ConsensourceTransactionHandler
  */
@@ -19,8 +27,6 @@ cfg_if! {
 use common::addressing;
 use payload::{Action, CertPayload};
 use state::ConsensourceState;
-
-use transaction_handler::{agent, assertion, certificate, factory, organization, standard};
 
 pub struct ConsensourceTransactionHandler {
     family_name: String,

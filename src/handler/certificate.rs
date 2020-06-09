@@ -10,7 +10,7 @@ use common::proto;
 use common::proto::organization::Organization_Authorization_Role::TRANSACTOR;
 use state::ConsensourceState;
 
-use transaction_handler::{agent, organization};
+use handler::{agent, organization};
 
 /// Creates a new Certificate and submits it to state
 ///
@@ -173,8 +173,8 @@ pub fn make_proto(
 mod tests {
     use super::*;
 
-    use transaction_handler::standard;
-    use transaction_handler::test_utils::*;
+    use handler::standard;
+    use handler::test_utils::*;
 
     #[test]
     /// Test that if IssueCertificateAction is valid an OK is returned and a new Certificate is added to state

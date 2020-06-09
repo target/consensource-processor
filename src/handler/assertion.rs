@@ -10,7 +10,7 @@ use common::proto;
 use common::proto::organization::Organization_Authorization_Role::TRANSACTOR;
 use state::ConsensourceState;
 
-use transaction_handler::{agent, certificate, organization, standard};
+use handler::{agent, certificate, organization, standard};
 
 /// Creates a new assertion and submits it to state along with the object of the assertion
 ///
@@ -140,7 +140,7 @@ pub fn create(
 mod tests {
     use super::*;
 
-    use transaction_handler::test_utils::*;
+    use handler::test_utils::*;
 
     #[test]
     /// Test that if AssertAction for a new Certificate is valid an Ok is returned and both an Assertion and a Certificate are added to state

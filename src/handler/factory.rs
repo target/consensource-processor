@@ -10,7 +10,7 @@ use common::proto;
 use common::proto::organization::Organization_Authorization_Role::TRANSACTOR;
 use state::ConsensourceState;
 
-use transaction_handler::{agent, organization};
+use handler::{agent, organization};
 
 /// Creates a new Request and submits it to state
 ///
@@ -142,8 +142,8 @@ pub fn change_request_status(
 mod tests {
     use super::*;
 
-    use transaction_handler::standard;
-    use transaction_handler::test_utils::*;
+    use handler::standard;
+    use handler::test_utils::*;
 
     #[test]
     /// Test that if OpenRequestAction is valid an OK is returned and a new Request is added to state

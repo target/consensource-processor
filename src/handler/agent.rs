@@ -10,7 +10,7 @@ use common::proto;
 use common::proto::organization::Organization_Authorization_Role::ADMIN;
 use state::ConsensourceState;
 
-use transaction_handler::organization;
+use handler::organization;
 
 /// Creates a new Agent and submits it to state
 /// ```
@@ -164,7 +164,7 @@ pub fn make_proto(
 mod tests {
     use super::*;
     use common::proto::organization::Organization_Authorization_Role::TRANSACTOR;
-    use transaction_handler::test_utils::*;
+    use handler::test_utils::*;
 
     #[test]
     /// Test that if CreateAgentAction is valid an OK is returned and a new Agent is added to state
