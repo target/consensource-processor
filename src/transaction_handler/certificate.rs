@@ -12,6 +12,23 @@ use state::ConsensourceState;
 
 use transaction_handler::{agent, organization};
 
+/// Creates a new Certificate and submits it to state
+///
+/// ```
+/// # Errors
+/// Returns an error if
+///   - a certificate with the certificate id already exist
+///   - an Agent with the signer public key does not exist
+///   - the Agent submitting the transaction is not associated with the organization
+///   - the Agent submitting the transaction is not authorized as a TRANSACTOR of the organization
+///   - the Organization the Agent is associated with is not a CertifyingBody
+///   - the standard does not exist
+///   - if source is from request:
+///    - the request does not exist
+///    - the request does not have status set to IN_PROGRESS
+///   - the factory the certificate is for does not exist. x
+///   - it fails to submit the new Certificate to state.
+/// ```
 pub fn issue(
     payload: &proto::payload::IssueCertificateAction,
     state: &mut ConsensourceState,
@@ -150,4 +167,170 @@ pub fn make_proto(
     new_certificate.set_valid_to(payload.get_valid_to());
 
     new_certificate
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use transaction_handler::standard;
+    use transaction_handler::test_utils::*;
+
+    #[test]
+    /// Test that if IssueCertificateAction is valid an OK is returned and a new Certificate is added to state
+    fn test_issue_certificate_handler_valid() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        //add agent
+        let standard_agent_action = make_agent_create_action();
+        agent::create(&standard_agent_action, &mut state, PUBLIC_KEY_1).unwrap();
+        //add org
+        let standard_org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        organization::create(&standard_org_action, &mut state, PUBLIC_KEY_1).unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        standard::create(&standard_action, &mut state, PUBLIC_KEY_1).unwrap();
+        //add second agent
+        let factory_agent_action = make_agent_create_action();
+        agent::create(&factory_agent_action, &mut state, PUBLIC_KEY_2).unwrap();
+        //add factory org
+        let factory_org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        organization::create(&factory_org_action, &mut state, PUBLIC_KEY_2).unwrap();
+        //add third agent
+        let cert_agent_action = make_agent_create_action();
+        agent::create(&cert_agent_action, &mut state, PUBLIC_KEY_3).unwrap();
+        //add certifying org
+        let cert_org_action = make_organization_create_action(
+            CERT_ORG_ID,
+            proto::organization::Organization_Type::CERTIFYING_BODY,
+        );
+        organization::create(&cert_org_action, &mut state, PUBLIC_KEY_3).unwrap();
+        //accredit the cert org
+        let accredit_action = make_accredit_certifying_body_action();
+        standard::accredit_certifying_body(&accredit_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let action = make_issue_certificate_action();
+
+        assert!(issue(&action, &mut state, PUBLIC_KEY_3).is_ok());
+
+        let certificate = state
+            .get_certificate(CERT_ID)
+            .expect("Failed to fetch certificate")
+            .expect("No certificate found");
+
+        assert_eq!(certificate, make_certificate(CERT_ORG_ID));
+    }
+
+    #[test]
+    /// Test that IssueCertificateAction fails because a certificate has already been issued
+    fn test_issue_certificate_handler_certificate_already_exists() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        //add agent
+        let standard_agent_action = make_agent_create_action();
+        agent::create(&standard_agent_action, &mut state, PUBLIC_KEY_1).unwrap();
+        //add org
+        let standard_org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        organization::create(&standard_org_action, &mut state, PUBLIC_KEY_1).unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        standard::create(&standard_action, &mut state, PUBLIC_KEY_1).unwrap();
+        //add second agent
+        let factory_agent_action = make_agent_create_action();
+        agent::create(&factory_agent_action, &mut state, PUBLIC_KEY_2).unwrap();
+        //add factory org
+        let factory_org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        organization::create(&factory_org_action, &mut state, PUBLIC_KEY_2).unwrap();
+        //add third agent
+        let cert_agent_action = make_agent_create_action();
+        agent::create(&cert_agent_action, &mut state, PUBLIC_KEY_3).unwrap();
+        //add certifying org
+        let cert_org_action = make_organization_create_action(
+            CERT_ORG_ID,
+            proto::organization::Organization_Type::CERTIFYING_BODY,
+        );
+        organization::create(&cert_org_action, &mut state, PUBLIC_KEY_3).unwrap();
+        //accredit the cert org
+        let accredit_action = make_accredit_certifying_body_action();
+        standard::accredit_certifying_body(&accredit_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let action = make_issue_certificate_action();
+
+        issue(&action, &mut state, PUBLIC_KEY_3).unwrap();
+
+        //issue cert again
+        let result = issue(&action, &mut state, PUBLIC_KEY_3);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(format!(
+                    "Certificate already exists: {}",
+                    CERT_ID
+                ),))
+            )
+        );
+    }
+
+    #[test]
+    /// Test that IssueCertificateAction fails because there is no agent with public key to accredit the cert body
+    fn test_issue_certificate_handler_no_agent_with_public_key() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        //add agent
+        let standard_agent_action = make_agent_create_action();
+        agent::create(&standard_agent_action, &mut state, PUBLIC_KEY_1).unwrap();
+        //add org
+        let standard_org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        organization::create(&standard_org_action, &mut state, PUBLIC_KEY_1).unwrap();
+        //add standard
+        let standard_action = make_standard_create_action();
+        standard::create(&standard_action, &mut state, PUBLIC_KEY_1).unwrap();
+        //add third agent
+        let cert_agent_action = make_agent_create_action();
+        agent::create(&cert_agent_action, &mut state, PUBLIC_KEY_3).unwrap();
+        //add certifying org
+        let cert_org_action = make_organization_create_action(
+            CERT_ORG_ID,
+            proto::organization::Organization_Type::CERTIFYING_BODY,
+        );
+        organization::create(&cert_org_action, &mut state, PUBLIC_KEY_3).unwrap();
+        //accredit the cert org
+        let accredit_action = make_accredit_certifying_body_action();
+        standard::accredit_certifying_body(&accredit_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let action = make_issue_certificate_action();
+
+        let result = issue(&action, &mut state, "non_existent_agent_pub_key");
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "No agent with public key non_existent_agent_pub_key exists",
+                ))
+            )
+        );
+    }
 }

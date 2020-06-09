@@ -12,7 +12,16 @@ use state::ConsensourceState;
 
 use transaction_handler::agent;
 
-/// Helper to create organization in state
+/// Creates a new Organization and submits it to state
+///
+/// ```
+/// # Errors
+/// Returns an error if
+///   - an Organization already exists with the same ID
+///   - an Agent with the signer public key does not exist
+///   - the Agent submitting the transaction is already associated with an organization
+///   - it fails to submit the new Organization to state.\
+/// ```
 pub fn create(
     payload: &proto::payload::CreateOrganizationAction,
     state: &mut ConsensourceState,
@@ -50,7 +59,17 @@ pub fn create(
     Ok(())
 }
 
-/// Helper to update organization from state
+/// Updates an existing Organization and submits it to state
+///
+/// ```
+/// # Errors
+/// Returns an error if
+///   - the Organization to be updated does not exist
+///   - an Agent with the signer public key does not exist
+///   - the Agent submitting the transaction is not associated with the organization
+///   - the Agent submitting the transaction is not authorized as an ADMIN of the organization
+///   - it fails to submit the Organization to state.
+/// ```
 pub fn update(
     payload: &proto::payload::UpdateOrganizationAction,
     state: &mut ConsensourceState,
@@ -88,7 +107,13 @@ pub fn update(
     Ok(())
 }
 
-/// Helper to get organization from state based on id
+/// Gets an existing Organization and submits it to state
+///
+/// ```
+/// # Errors
+/// Returns an error if
+///   - No Organization with the ID exists
+/// ```
 pub fn get(
     state: &mut ConsensourceState,
     organization_id: &str,
@@ -176,4 +201,203 @@ pub fn make_proto(
         new_organization.set_factory_details(factory_details);
     }
     new_organization
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use transaction_handler::test_utils::*;
+
+    #[test]
+    /// Test that if CreateOrganizationAction is valid an OK is returned and a new Organization is added to state
+    fn test_create_organization_handler_valid() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        //add agent
+        let agent_action = make_agent_create_action();
+        agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+
+        assert!(create(&action, &mut state, PUBLIC_KEY_1).is_ok());
+
+        let org = state
+            .get_organization(STANDARDS_BODY_ID)
+            .expect("Failed to fetch organization")
+            .expect("No organization found");
+
+        assert_eq!(
+            org,
+            make_organization(
+                STANDARDS_BODY_ID,
+                proto::organization::Organization_Type::STANDARDS_BODY,
+                PUBLIC_KEY_1
+            )
+        );
+    }
+
+    #[test]
+    fn test_create_organization_handler_organization_already_exists() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        //add agent
+        let agent_action = make_agent_create_action();
+        agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+
+        create(&action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let result = create(&action, &mut state, PUBLIC_KEY_1);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(format!(
+                    "Organization already exists: {}",
+                    STANDARDS_BODY_ID
+                ),))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that CreateOrganizationAction fails when no agent is associated with the supplied public key
+    fn test_create_organization_handler_no_agent_with_public_key() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        //add agent
+        let agent_action = make_agent_create_action();
+        agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+
+        let result = create(&action, &mut state, "non_existent_agent_pub_key");
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "No agent with public key non_existent_agent_pub_key exists",
+                ))
+            )
+        )
+    }
+
+    #[test]
+    /// Test that if UpdateOrganizationAction is valid an OK is returned and the Organization is updated in state
+    fn test_update_organization_handler_valid() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        //add agent
+        let agent_action = make_agent_create_action();
+        agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        create(&org_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let action = make_organization_update_action();
+
+        assert!(update(&action, &mut state, PUBLIC_KEY_1).is_ok());
+
+        let org = state
+            .get_organization(STANDARDS_BODY_ID)
+            .expect("Failed to fetch organization")
+            .expect("No organization found");
+
+        assert_eq!(
+            org,
+            make_organization_update(
+                STANDARDS_BODY_ID,
+                proto::organization::Organization_Type::STANDARDS_BODY,
+                PUBLIC_KEY_1
+            )
+        );
+    }
+
+    #[test]
+    /// Test that UpdateOrganizationAction fails when no agent is associated with the supplied public key
+    fn test_update_organization_handler_no_agent_with_public_key() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        //add agent
+        let agent_action = make_agent_create_action();
+        agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        create(&org_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let action = make_organization_update_action();
+
+        let result = update(&action, &mut state, "non_existent_agent_pub_key");
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "No agent with public key non_existent_agent_pub_key exists",
+                ))
+            )
+        );
+    }
+
+    #[test]
+    /// Test that UpdateOrganizationAction fails when unassociated agent updates the organization
+    fn test_update_organization_handler_agent_not_associated_with_organization() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        //add agent
+        let agent_action = make_agent_create_action();
+        agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        create(&org_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        //add second agent
+        agent::create(&agent_action, &mut state, PUBLIC_KEY_2).unwrap();
+
+        let action = make_organization_update_action();
+
+        let result = update(&action, &mut state, PUBLIC_KEY_2);
+
+        assert!(result.is_err());
+
+        assert_eq!(
+            format!("{:?}", result.unwrap_err()),
+            format!(
+                "{:?}",
+                ApplyError::InvalidTransaction(String::from(
+                    "Agent is not associated with an organization: ",
+                ))
+            )
+        );
+    }
 }
