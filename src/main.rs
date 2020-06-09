@@ -34,7 +34,7 @@ use transaction_handler::handler;
 fn main() {
     let matches = clap_app!(item =>
     (version: crate_version!())
-    (about: "Cert_registry Transaction Processor (Rust)")
+    (about: "Consensource Transaction Processor (Rust)")
     (@arg connect: -C --connect +takes_value
      "connection endpoint for validator")
     (@arg verbose: -v --verbose +multiple
@@ -80,12 +80,12 @@ fn main() {
         }
     }
 
-    let cousensource_transaction_handler = handler::ConsensourceTransactionHandler::new();
+    let consensource_transaction_handler = handler::ConsensourceTransactionHandler::new();
     let mut processor = TransactionProcessor::new(endpoint);
 
     info!("Console logging level: {}", console_log_level);
 
-    processor.add_handler(&cousensource_transaction_handler);
+    processor.add_handler(&consensource_transaction_handler);
     processor.start();
 }
 
