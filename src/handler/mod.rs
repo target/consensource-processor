@@ -110,6 +110,9 @@ impl TransactionHandler for ConsensourceTransactionHandler {
             Action::CreateAssertion(payload) => {
                 assertion::create(&payload, &mut state, signer_public_key)
             }
+            Action::TransferAssertion(payload) => {
+                assertion::transfer(&payload, &mut state, signer_public_key)
+            }
         }
     }
 }

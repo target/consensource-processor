@@ -28,6 +28,7 @@ pub enum Action {
     ChangeRequestStatus(payload::ChangeRequestStatusAction),
     AccreditCertifyingBody(payload::AccreditCertifyingBodyAction),
     CreateAssertion(payload::AssertAction),
+    TransferAssertion(payload::TransferAssertionAction),
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -128,6 +129,9 @@ impl CertPayload {
             }
             payload::CertificateRegistryPayload_Action::ASSERT_ACTION => {
                 validate_assert(&payload.get_assert_action())
+            }
+            payload::CertificateRegistryPayload_Action::TRANSFER_ASSERTION => {
+                validate_transfer_assertion(&payload.get_transfer_assertion_action())
             }
         };
         Ok(CertPayload {
@@ -333,6 +337,13 @@ fn validate_assert(assertion: &payload::AssertAction) -> Result<Action, ApplyErr
         )));
     }
     Ok(Action::CreateAssertion(assertion.clone()))
+}
+
+fn validate_transfer_assertion(
+    transfer: &payload::TransferAssertionAction,
+) -> Result<Action, ApplyError> {
+    reject_empty!(transfer, assertion_id, new_owner_public_key)?;
+    Ok(Action::TransferAssertion(transfer.clone()))
 }
 
 #[cfg(test)]

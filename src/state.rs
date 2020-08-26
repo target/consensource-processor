@@ -275,6 +275,34 @@ impl<'a> ConsensourceState<'a> {
     ) -> Result<(), ApplyError> {
         assertion.set_state(self.context, assertion_id)
     }
+
+    pub fn remove_assertion(&mut self, assertion_id: &str) -> Result<(), ApplyError> {
+        let address = make_assertion_address(assertion_id);
+        let state_data = self.context.get_state_entry(&address)?;
+        let mut assertions: AssertionContainer = match state_data {
+            Some(data) => protobuf::parse_from_bytes(data.as_slice()).map_err(|_err| {
+                ApplyError::InvalidTransaction("Cannot deserialize Assertions".to_string())
+            })?,
+            None => AssertionContainer::new(),
+        };
+        let filtered_assertions = assertions
+            .entries
+            .iter()
+            .filter(|a| a.id != assertion_id)
+            .collect::<Vec<_>>();
+        if filtered_assertions.is_empty() {
+            self.context
+                .delete_state_entries(&[address])
+                .map_err(|err| ApplyError::InternalError(format!("{}", err)))?;
+        } else {
+            assertions.entries.retain(|a| a.id != assertion_id);
+            let serialized = protobuf::Message::write_to_bytes(&assertions).map_err(|_err| {
+                ApplyError::InvalidTransaction(String::from("Cannot serialize container"))
+            })?;
+            self.context.set_state_entry(address, serialized)?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

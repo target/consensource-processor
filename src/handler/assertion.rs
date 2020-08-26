@@ -7,7 +7,7 @@ cfg_if! {
 }
 
 use common::proto;
-use common::proto::organization::Organization_Authorization_Role::TRANSACTOR;
+use common::proto::organization::Organization_Authorization_Role::{ADMIN, TRANSACTOR};
 use state::ConsensourceState;
 
 use handler::{agent, certificate, organization, standard};
@@ -134,6 +134,103 @@ pub fn create(
     }
     state.set_assertion(payload.get_assertion_id(), assertion)?;
     Ok(())
+}
+
+pub fn transfer(
+    payload: &proto::payload::TransferAssertionAction,
+    state: &mut ConsensourceState,
+    signer_public_key: &str,
+) -> Result<(), ApplyError> {
+    // Verify the signer
+    let agt = agent::get(state, signer_public_key)?;
+    // Check agent's organization
+    agent::has_organization(&agt)?;
+
+    let org = organization::get(state, agt.get_organization_id())?;
+
+    organization::check_type(&org, proto::organization::Organization_Type::INGESTION)?;
+
+    // Validate that agent is a transactor
+    organization::check_authorization(&org, signer_public_key, TRANSACTOR)?;
+
+    let assertion = match state.get_assertion(payload.get_assertion_id()) {
+        Ok(Some(assertion)) => Ok(assertion),
+        Ok(None) => Err(ApplyError::InvalidTransaction(format!(
+            "Assertion with ID {} does not exist",
+            payload.get_assertion_id()
+        ))),
+        Err(err) => Err(err),
+    }?;
+
+    // Check this agent is a current owner of the assertion
+    if signer_public_key != assertion.get_assertor_pub_key() {
+        return Err(ApplyError::InvalidTransaction(format!(
+            "Assertion is not owned by Agent with public key {}",
+            signer_public_key
+        )));
+    }
+
+    // Check the new agent exists in state
+    let new_agent = agent::get(state, payload.get_new_owner_public_key())?;
+
+    match assertion.get_assertion_type() {
+        proto::assertion::Assertion_Type::FACTORY => {
+            let factory = organization::get(state, assertion.get_object_id())?;
+            organization::check_type(&factory, proto::organization::Organization_Type::FACTORY)?;
+            todo!("Check if new_agent already belongs to org? Maybe not necessary.");
+            // create new authorizations for the new agent
+            let mut admin_authorization = proto::organization::Organization_Authorization::new();
+            admin_authorization.set_public_key(payload.get_new_owner_public_key().to_string());
+            admin_authorization.set_role(ADMIN);
+
+            let mut transactor_authorization =
+                proto::organization::Organization_Authorization::new();
+            transactor_authorization.set_public_key(payload.get_new_owner_public_key().to_string());
+            transactor_authorization.set_role(TRANSACTOR);
+            // Overwrite current authorized agents, authorize new one
+            factory.set_authorizations(::protobuf::RepeatedField::from_vec(vec![
+                admin_authorization,
+                transactor_authorization,
+            ]));
+            // Write updated factory to state
+            state.set_organization(factory.get_id(), factory)?;
+            // Write updated agent to state
+            new_agent.set_organization_id(factory.get_id().to_string());
+            state.set_agent(payload.get_new_owner_public_key(), new_agent)
+        }
+        proto::assertion::Assertion_Type::CERTIFICATE => {
+            let certificate = match state.get_certificate(assertion.get_object_id()) {
+                Ok(Some(cert)) => Ok(cert),
+                Ok(None) => Err(ApplyError::InvalidTransaction(format!(
+                    "Asserted Certificate with id {} does not exist",
+                    assertion.get_object_id()
+                ))),
+                Err(err) => Err(err),
+            }?;
+            let cert_org = organization::get(state, new_agent.get_organization_id())?;
+            organization::check_type(
+                &cert_org,
+                proto::organization::Organization_Type::CERTIFYING_BODY,
+            )?;
+
+            // change cert_body_id to their cert_body_id
+            certificate.set_certifying_body_id(new_agent.get_organization_id().to_string());
+            Ok(())
+        }
+        proto::assertion::Assertion_Type::STANDARD => {
+            let standard = match state.get_standard(assertion.get_object_id()) {
+                Ok(Some(standard)) => Ok(standard),
+                Ok(None) => Err(ApplyError::InvalidTransaction(format!(
+                    "Asserted Standard with id {} does not exist",
+                    assertion.get_object_id()
+                ))),
+                Err(err) => Err(err),
+            }?;
+            todo!("Check if new_agent belongs to standards org? Maybe not necessary.");
+            // check for existing standards body, change standards body id
+            Ok(())
+        }
+    }
 }
 
 #[cfg(test)]
