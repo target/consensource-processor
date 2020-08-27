@@ -7,7 +7,7 @@ cfg_if! {
 }
 
 use common::proto;
-use common::proto::organization::Organization_Authorization_Role::TRANSACTOR;
+use common::proto::organization::Organization_Authorization_Role::{ADMIN, TRANSACTOR};
 use state::ConsensourceState;
 
 use handler::{agent, certificate, organization, standard};
@@ -133,6 +133,120 @@ pub fn create(
         assertion.set_data_id(data_id.to_string());
     }
     state.set_assertion(payload.get_assertion_id(), assertion)?;
+    Ok(())
+}
+
+pub fn transfer(
+    payload: &proto::payload::TransferAssertionAction,
+    state: &mut ConsensourceState,
+    signer_public_key: &str,
+) -> Result<(), ApplyError> {
+    // Verify the signer
+    let mut agt = agent::get(state, signer_public_key)?;
+
+    // Check for a preexisting association with another org
+    if !agt.get_organization_id().is_empty() {
+        return Err(ApplyError::InvalidTransaction(format!(
+            "Agent is already associated with organization {}",
+            agt.get_organization_id(),
+        )));
+    }
+
+    // Get the organization to be claimed from the assertion id
+    let assertion_id = payload.get_assertion_id();
+    let assertion = match state.get_assertion(assertion_id) {
+        Ok(Some(assertion)) => Ok(assertion),
+        Ok(None) => Err(ApplyError::InvalidTransaction(format!(
+            "No assertion with ID {} exists",
+            assertion_id
+        ))),
+        Err(err) => Err(err),
+    }?;
+
+    match assertion.get_assertion_type() {
+        proto::assertion::Assertion_Type::FACTORY => {
+            let org_id = assertion.get_object_id();
+            let mut org = organization::get(state, org_id)?;
+
+            // Check organization type of the assertion being claimed
+            organization::check_type(&org, proto::organization::Organization_Type::FACTORY)?;
+
+            // Check if the factory has already been claimed by signing agent
+            let auths = org.get_authorizations();
+            if auths
+                .iter()
+                .any(|a| a.get_public_key() == signer_public_key)
+            {
+                return Err(ApplyError::InvalidTransaction(format!(
+                    "Organization {} has already been claimed by agent {} (you)",
+                    org.get_name(),
+                    signer_public_key
+                )));
+            }
+
+            // Set organization for the claiming agent
+            agt.set_organization_id(String::from(org_id));
+
+            // Authorize agent for org. Using the '.set_authorization'
+            // function resets and updates an organization's authorizations
+            let mut admin_authorization = proto::organization::Organization_Authorization::new();
+            admin_authorization.set_public_key(signer_public_key.to_string());
+            admin_authorization.set_role(ADMIN);
+
+            let mut transactor_authorization =
+                proto::organization::Organization_Authorization::new();
+            transactor_authorization.set_public_key(signer_public_key.to_string());
+            transactor_authorization.set_role(TRANSACTOR);
+
+            org.set_authorizations(::protobuf::RepeatedField::from_vec(vec![
+                admin_authorization,
+                transactor_authorization,
+            ]));
+
+            // Update agent and factory organization state
+            state.set_agent(signer_public_key, agt)?;
+            state.set_organization(org_id, org)?;
+        }
+        proto::assertion::Assertion_Type::CERTIFICATE => {
+            let mut certificate = match state.get_certificate(assertion.get_object_id()) {
+                Ok(Some(cert)) => Ok(cert),
+                Ok(None) => Err(ApplyError::InvalidTransaction(format!(
+                    "Asserted Certificate with id {} does not exist",
+                    assertion.get_object_id()
+                ))),
+                Err(err) => Err(err),
+            }?;
+            let cert_org = organization::get(state, agt.get_organization_id())?;
+            organization::check_type(
+                &cert_org,
+                proto::organization::Organization_Type::CERTIFYING_BODY,
+            )?;
+
+            // change cert_body_id to their cert_body_id
+            certificate.set_certifying_body_id(agt.get_organization_id().to_string());
+        }
+        proto::assertion::Assertion_Type::STANDARD => {
+            let _standard = match state.get_standard(assertion.get_object_id()) {
+                Ok(Some(standard)) => Ok(standard),
+                Ok(None) => Err(ApplyError::InvalidTransaction(format!(
+                    "Asserted Standard with id {} does not exist",
+                    assertion.get_object_id()
+                ))),
+                Err(err) => Err(err),
+            }?;
+            todo!("Check if agt belongs to standards org? Maybe not necessary.");
+            // check for existing standards body, change standards body id
+        }
+        proto::assertion::Assertion_Type::UNSET_TYPE => {
+            return Err(ApplyError::InvalidTransaction(
+              "Transfer of ownership for assertion of type UNSET_TYPE is not  supported".to_string()
+            ))
+        }
+    }
+
+    // Update state to delete assertion
+    state.delete_assertion(assertion_id)?;
+
     Ok(())
 }
 

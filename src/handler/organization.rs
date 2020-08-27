@@ -142,7 +142,7 @@ pub fn check_authorization(
         });
     if is_role.is_none() {
         return Err(ApplyError::InvalidTransaction(format!(
-            "Agent is not authorized as a{} for organization with ID: {}",
+            "Agent is not authorized as a {} for organization with ID: {}",
             match role {
                 ADMIN => "n admin",
                 TRANSACTOR => " transactor",

@@ -28,6 +28,7 @@ pub enum Action {
     ChangeRequestStatus(payload::ChangeRequestStatusAction),
     AccreditCertifyingBody(payload::AccreditCertifyingBodyAction),
     CreateAssertion(payload::AssertAction),
+    TransferAssertion(payload::TransferAssertionAction),
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -130,9 +131,7 @@ impl CertPayload {
                 validate_assert(&payload.get_assert_action())
             }
             payload::CertificateRegistryPayload_Action::TRANSFER_ASSERTION => {
-                return Err(ApplyError::InvalidTransaction(String::from(
-                    "Transfer Assertion action not yet implemented",
-                )));
+                validate_transfer_assertion(&payload.get_transfer_assertion_action())
             }
         };
         Ok(CertPayload {
@@ -166,6 +165,7 @@ fn validate_create_agent(create_agent: &payload::CreateAgentAction) -> Result<Ac
     }
     Ok(Action::CreateAgent(create_agent.clone()))
 }
+
 fn validate_create_org(
     create_org: &payload::CreateOrganizationAction,
 ) -> Result<Action, ApplyError> {
@@ -194,9 +194,11 @@ fn validate_create_org(
 
     Ok(Action::CreateOrganization(create_org.clone()))
 }
+
 fn validate_update_org(update: &payload::UpdateOrganizationAction) -> Result<Action, ApplyError> {
     Ok(Action::UpdateOrganization(update.clone()))
 }
+
 fn validate_authorize_agent(
     authorize_agent: &payload::AuthorizeAgentAction,
 ) -> Result<Action, ApplyError> {
@@ -218,6 +220,7 @@ fn validate_authorize_agent(
 
     Ok(Action::AuthorizeAgent(authorize_agent.clone()))
 }
+
 fn validate_issue_certificate(
     issue_cert: &payload::IssueCertificateAction,
 ) -> Result<Action, ApplyError> {
@@ -257,6 +260,7 @@ fn validate_open_request(open_request: &payload::OpenRequestAction) -> Result<Ac
     reject_empty!(open_request, id, standard_id)?;
     Ok(Action::OpenRequest(open_request.clone()))
 }
+
 fn validate_change_request(
     change_request: &payload::ChangeRequestStatusAction,
 ) -> Result<Action, ApplyError> {
@@ -274,6 +278,7 @@ fn validate_change_request(
 
     Ok(Action::ChangeRequestStatus(change_request.clone()))
 }
+
 fn validate_create_standard(
     create_standard: &payload::CreateStandardAction,
 ) -> Result<Action, ApplyError> {
@@ -293,6 +298,7 @@ fn validate_create_standard(
     }
     Ok(Action::CreateStandard(create_standard.clone()))
 }
+
 fn validate_update_standard(
     update_standard: &payload::UpdateStandardAction,
 ) -> Result<Action, ApplyError> {
@@ -304,6 +310,7 @@ fn validate_update_standard(
     }
     Ok(Action::UpdateStandard(update_standard.clone()))
 }
+
 fn validate_accredit_cert_body(
     accredit_certifying_body: &payload::AccreditCertifyingBodyAction,
 ) -> Result<Action, ApplyError> {
@@ -325,6 +332,7 @@ fn validate_accredit_cert_body(
         accredit_certifying_body.clone(),
     ))
 }
+
 fn validate_assert(assertion: &payload::AssertAction) -> Result<Action, ApplyError> {
     if assertion.has_new_factory() {
         validate_create_org(&assertion.get_new_factory().get_factory())?;
@@ -338,6 +346,14 @@ fn validate_assert(assertion: &payload::AssertAction) -> Result<Action, ApplyErr
         )));
     }
     Ok(Action::CreateAssertion(assertion.clone()))
+}
+
+fn validate_transfer_assertion(
+    transfer_assertion: &payload::TransferAssertionAction,
+) -> Result<Action, ApplyError> {
+    reject_empty!(transfer_assertion, assertion_id, new_owner_public_key)?;
+
+    Ok(Action::TransferAssertion(transfer_assertion.clone()))
 }
 
 #[cfg(test)]

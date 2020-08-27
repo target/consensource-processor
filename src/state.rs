@@ -275,6 +275,39 @@ impl<'a> ConsensourceState<'a> {
     ) -> Result<(), ApplyError> {
         assertion.set_state(self.context, assertion_id)
     }
+
+    /// As the addressing scheme does not guarantee uniquesness, this deletes an Assertion from an Assertion Container
+    /// which works like a hashbucket, serializes the container and puts it back into state,
+    /// ```
+    /// # Errors
+    /// Returns an error if it fails to serialize the container or fails to delete it from state
+    /// ```
+    pub fn delete_assertion(&mut self, assertion_id: &str) -> Result<(), ApplyError> {
+        let address = make_assertion_address(assertion_id);
+        let state_data = self.context.get_state_entry(&address)?;
+        let mut assertions: AssertionContainer = match state_data {
+            Some(data) => protobuf::parse_from_bytes(data.as_slice()).map_err(|_err| {
+                ApplyError::InvalidTransaction("Cannot deserialize Assertions".to_string())
+            })?,
+            None => AssertionContainer::new(),
+        };
+        if assertions
+            .entries
+            .iter()
+            .find(|a| a.id != assertion_id).is_none() {
+              self.context
+                .delete_state_entry(&address)
+                .map_err(|err| ApplyError::InternalError(format!("{}", err)))?;
+        } else {
+            assertions.entries.retain(|a| a.id != assertion_id);
+            let serialized = protobuf::Message::write_to_bytes(&assertions).map_err(|_err| {
+                ApplyError::InvalidTransaction(String::from("Cannot serialize container"))
+            })?;
+            self.context.set_state_entry(address, serialized)?;
+        }
+        
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -315,9 +348,13 @@ mod tests {
             Ok(())
         }
 
-        /// this is not needed for these tests
-        fn delete_state_entries(&self, _addresses: &[String]) -> Result<Vec<String>, ContextError> {
-            unimplemented!()
+        fn delete_state_entries(&self, addresses: &[String]) -> Result<Vec<String>, ContextError> {
+          let mut deleted_addr: Vec<String> = vec![];
+          for addr in addresses {
+              self.state.borrow_mut().remove(addr);
+              deleted_addr.push(addr.to_string());
+          }
+          Ok(deleted_addr)
         }
 
         /// this is not needed for these tests
@@ -464,6 +501,21 @@ mod tests {
         assert!(state.set_assertion("test", make_assertion("test")).is_ok());
         let result = state.get_assertion("test").unwrap();
         assert_eq!(result, Some(make_assertion("test")));
+    }
+
+    #[test]
+    // Test that if an assertion exists in state, Some(assertion) is returned
+    fn test_delete_assertion_some() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+
+        assert!(state.set_assertion("test", make_assertion("test")).is_ok());
+        let result = state.get_assertion("test").unwrap();
+        assert_eq!(result, Some(make_assertion("test")));
+
+        assert!(state.delete_assertion("test").is_ok());
+        let deleted_result = state.get_assertion("test").unwrap();
+        assert!(deleted_result.is_none());
     }
 
     fn make_agent(public_key: &str) -> Agent {

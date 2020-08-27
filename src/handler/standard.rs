@@ -127,14 +127,14 @@ pub fn update(
     new_standard_version.set_version(payload.version.clone());
     new_standard_version.set_description(payload.description.clone());
     new_standard_version.set_link(payload.link.clone());
-    new_standard_version.set_approval_date(payload.approval_date.clone());
+    new_standard_version.set_approval_date(payload.approval_date);
 
     versions.push(new_standard_version);
 
     standard.set_versions(protobuf::RepeatedField::from_vec(versions));
 
     // Put updated standard in state
-    state.set_standard(&standard.id.clone(), standard)?;
+    state.set_standard(&standard.id, standard.clone())?;
 
     Ok(())
 }
@@ -271,7 +271,7 @@ pub fn make_proto(
     new_standard_version.set_version(payload.version.clone());
     new_standard_version.set_description(payload.description.clone());
     new_standard_version.set_link(payload.link.clone());
-    new_standard_version.set_approval_date(payload.approval_date.clone());
+    new_standard_version.set_approval_date(payload.approval_date);
 
     let mut new_standard = proto::standard::Standard::new();
     new_standard.set_id(payload.standard_id.clone());
