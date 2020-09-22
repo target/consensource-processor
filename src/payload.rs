@@ -129,6 +129,11 @@ impl CertPayload {
             payload::CertificateRegistryPayload_Action::ASSERT_ACTION => {
                 validate_assert(&payload.get_assert_action())
             }
+            payload::CertificateRegistryPayload_Action::TRANSFER_ASSERTION => {
+                return Err(ApplyError::InvalidTransaction(String::from(
+                    "Transfer Assertion action not yet implemented",
+                )));
+            }
         };
         Ok(CertPayload {
             action: payload_action?,
