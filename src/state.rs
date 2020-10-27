@@ -294,8 +294,10 @@ impl<'a> ConsensourceState<'a> {
         if assertions
             .entries
             .iter()
-            .find(|a| a.id != assertion_id).is_none() {
-              self.context
+            .find(|a| a.id != assertion_id)
+            .is_none()
+        {
+            self.context
                 .delete_state_entry(&address)
                 .map_err(|err| ApplyError::InternalError(format!("{}", err)))?;
         } else {
@@ -305,7 +307,7 @@ impl<'a> ConsensourceState<'a> {
             })?;
             self.context.set_state_entry(address, serialized)?;
         }
-        
+
         Ok(())
     }
 }
@@ -349,12 +351,12 @@ mod tests {
         }
 
         fn delete_state_entries(&self, addresses: &[String]) -> Result<Vec<String>, ContextError> {
-          let mut deleted_addr: Vec<String> = vec![];
-          for addr in addresses {
-              self.state.borrow_mut().remove(addr);
-              deleted_addr.push(addr.to_string());
-          }
-          Ok(deleted_addr)
+            let mut deleted_addr: Vec<String> = vec![];
+            for addr in addresses {
+                self.state.borrow_mut().remove(addr);
+                deleted_addr.push(addr.to_string());
+            }
+            Ok(deleted_addr)
         }
 
         /// this is not needed for these tests

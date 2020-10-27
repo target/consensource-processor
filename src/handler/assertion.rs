@@ -221,12 +221,13 @@ pub fn transfer(
                 &cert_org,
                 proto::organization::Organization_Type::CERTIFYING_BODY,
             )?;
-
-            // change cert_body_id to their cert_body_id
+            //TODO: should there be a check to see if the auditor is accredited to this standard?
+            // update cert_body_id to their org_id
             certificate.set_certifying_body_id(agt.get_organization_id().to_string());
+            state.set_certificate(&certificate.id, certificate.clone())?;
         }
         proto::assertion::Assertion_Type::STANDARD => {
-            let _standard = match state.get_standard(assertion.get_object_id()) {
+            let mut standard = match state.get_standard(assertion.get_object_id()) {
                 Ok(Some(standard)) => Ok(standard),
                 Ok(None) => Err(ApplyError::InvalidTransaction(format!(
                     "Asserted Standard with id {} does not exist",
@@ -234,12 +235,19 @@ pub fn transfer(
                 ))),
                 Err(err) => Err(err),
             }?;
-            todo!("Check if agt belongs to standards org? Maybe not necessary.");
-            // check for existing standards body, change standards body id
+            let standards_org = organization::get(state, agt.get_organization_id())?;
+            organization::check_type(
+                &standards_org,
+                proto::organization::Organization_Type::STANDARDS_BODY,
+            )?;
+            // update standards_body_id to their org_id
+            standard.set_organization_id(agt.get_organization_id().to_string());
+            state.set_standard(&standard.id, standard.clone())?;
         }
         proto::assertion::Assertion_Type::UNSET_TYPE => {
             return Err(ApplyError::InvalidTransaction(
-              "Transfer of ownership for assertion of type UNSET_TYPE is not  supported".to_string()
+                "Transfer of ownership for assertion of type UNSET_TYPE is not  supported"
+                    .to_string(),
             ))
         }
     }
