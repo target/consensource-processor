@@ -53,8 +53,13 @@ impl TransactionContext for MockTransactionContext {
     }
 
     /// this is not needed for these tests
-    fn delete_state_entries(&self, _addresses: &[String]) -> Result<Vec<String>, ContextError> {
-        unimplemented!()
+    fn delete_state_entries(&self, addresses: &[String]) -> Result<Vec<String>, ContextError> {
+        let mut deleted_addr: Vec<String> = vec![];
+        for addr in addresses {
+            self.state.borrow_mut().remove(addr);
+            deleted_addr.push(addr.to_string());
+        }
+        Ok(deleted_addr)
     }
 
     /// this is not needed for these tests
@@ -471,4 +476,10 @@ pub fn make_assert_action_new_standard(id: &str) -> AssertAction {
     assert_action.set_new_standard(make_standard_create_action());
     assert_action.set_assertion_id(id.to_string());
     assert_action
+}
+
+pub fn make_transfer_assertion_action_factory(id: &str) -> TransferAssertionAction {
+    let mut transfer_assertion_action = TransferAssertionAction::new();
+    transfer_assertion_action.set_assertion_id(id.to_string());
+    transfer_assertion_action
 }

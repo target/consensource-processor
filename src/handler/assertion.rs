@@ -221,13 +221,12 @@ pub fn transfer(
                 &cert_org,
                 proto::organization::Organization_Type::CERTIFYING_BODY,
             )?;
-            //TODO: should there be a check to see if the auditor is accredited to this standard?
-            // update cert_body_id to their org_id
+
+            // change cert_body_id to their cert_body_id
             certificate.set_certifying_body_id(agt.get_organization_id().to_string());
-            state.set_certificate(&certificate.id, certificate.clone())?;
         }
         proto::assertion::Assertion_Type::STANDARD => {
-            let mut standard = match state.get_standard(assertion.get_object_id()) {
+            let _standard = match state.get_standard(assertion.get_object_id()) {
                 Ok(Some(standard)) => Ok(standard),
                 Ok(None) => Err(ApplyError::InvalidTransaction(format!(
                     "Asserted Standard with id {} does not exist",
@@ -235,14 +234,8 @@ pub fn transfer(
                 ))),
                 Err(err) => Err(err),
             }?;
-            let standards_org = organization::get(state, agt.get_organization_id())?;
-            organization::check_type(
-                &standards_org,
-                proto::organization::Organization_Type::STANDARDS_BODY,
-            )?;
-            // update standards_body_id to their org_id
-            standard.set_organization_id(agt.get_organization_id().to_string());
-            state.set_standard(&standard.id, standard.clone())?;
+            todo!("Check if agt belongs to standards org? Maybe not necessary.");
+            // check for existing standards body, change standards body id
         }
         proto::assertion::Assertion_Type::UNSET_TYPE => {
             return Err(ApplyError::InvalidTransaction(
@@ -563,5 +556,74 @@ mod tests {
                 PUBLIC_KEY_1,
             )
         );
+    }
+
+    #[test]
+    /// Test that TransferAssertionAction for a FACTORY assertion is valid. The factory assertion should be removed from state.
+    fn test_transfer_assertion_action_for_factory() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+
+        //add agent
+        let agent_action = make_agent_create_action();
+        agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        //add org
+        let org_action = make_organization_create_action(
+            INGESTION_ID,
+            proto::organization::Organization_Type::INGESTION,
+        );
+        organization::create(&org_action, &mut state, PUBLIC_KEY_1).unwrap();
+        let factory_assert_action = make_assert_action_new_factory(ASSERTION_ID_1);
+        create(&factory_assert_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let assertion = state
+            .get_assertion(ASSERTION_ID_1)
+            .expect("Failed to fetch Assertion")
+            .expect("No Assertion found");
+
+        assert_eq!(
+            assertion,
+            make_assertion(
+                PUBLIC_KEY_1,
+                ASSERTION_ID_1,
+                proto::assertion::Assertion_Type::FACTORY,
+                FACTORY_ID
+            )
+        );
+
+        let factory = state
+            .get_organization(FACTORY_ID)
+            .expect("Failed to fetch asserted factory")
+            .expect("No asserted factory found");
+
+        assert_eq!(
+            factory,
+            make_organization(
+                FACTORY_ID,
+                proto::organization::Organization_Type::FACTORY,
+                PUBLIC_KEY_1
+            )
+        );
+
+        //add transfer agent
+        let second_agent_action = make_agent_create_action();
+        agent::create(&second_agent_action, &mut state, PUBLIC_KEY_2).unwrap();
+
+        //make transfer assertion action
+        let factory_transfer_assertion_action =
+            make_transfer_assertion_action_factory(ASSERTION_ID_1);
+
+        assert!(transfer(&factory_transfer_assertion_action, &mut state, PUBLIC_KEY_2).is_ok());
+
+        //check that factory assertion is no longer in state
+        assert!(state
+            .get_assertion(ASSERTION_ID_1)
+            .expect("Failed to fetch Assertion")
+            .is_none());
+
+        //check if the transfer agent now belongs to the factory
+        let second_agent = agent::get(&mut state, PUBLIC_KEY_2).unwrap();
+        assert_eq!(second_agent.get_organization_id(), FACTORY_ID);
     }
 }
