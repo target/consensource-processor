@@ -478,7 +478,7 @@ pub fn make_assert_action_new_standard(id: &str) -> AssertAction {
     assert_action
 }
 
-pub fn make_transfer_assertion_action_factory(id: &str) -> TransferAssertionAction {
+pub fn make_transfer_assertion_action(id: &str) -> TransferAssertionAction {
     let mut transfer_assertion_action = TransferAssertionAction::new();
     transfer_assertion_action.set_assertion_id(id.to_string());
     transfer_assertion_action
