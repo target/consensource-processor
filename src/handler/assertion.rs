@@ -144,14 +144,6 @@ pub fn transfer(
     // Verify the signer
     let mut agt = agent::get(state, signer_public_key)?;
 
-    // Check for a preexisting association with another org
-    if !agt.get_organization_id().is_empty() {
-        return Err(ApplyError::InvalidTransaction(format!(
-            "Agent is already associated with organization {}",
-            agt.get_organization_id(),
-        )));
-    }
-
     // Get the organization to be claimed from the assertion id
     let assertion_id = payload.get_assertion_id();
     let assertion = match state.get_assertion(assertion_id) {
@@ -165,6 +157,14 @@ pub fn transfer(
 
     match assertion.get_assertion_type() {
         proto::assertion::Assertion_Type::FACTORY => {
+            // Check for a preexisting association with another org
+            if !agt.get_organization_id().is_empty() {
+                return Err(ApplyError::InvalidTransaction(format!(
+                    "Agent is already associated with organization {}",
+                    agt.get_organization_id(),
+                )));
+            }
+
             let org_id = assertion.get_object_id();
             let mut org = organization::get(state, org_id)?;
 
@@ -221,12 +221,13 @@ pub fn transfer(
                 &cert_org,
                 proto::organization::Organization_Type::CERTIFYING_BODY,
             )?;
-
-            // change cert_body_id to their cert_body_id
+            //TODO: should there be a check to see if the auditor is accredited to this standard?
+            // update cert_body_id to their org_id
             certificate.set_certifying_body_id(agt.get_organization_id().to_string());
+            state.set_certificate(&certificate.id, certificate.clone())?;
         }
         proto::assertion::Assertion_Type::STANDARD => {
-            let _standard = match state.get_standard(assertion.get_object_id()) {
+            let mut standard = match state.get_standard(assertion.get_object_id()) {
                 Ok(Some(standard)) => Ok(standard),
                 Ok(None) => Err(ApplyError::InvalidTransaction(format!(
                     "Asserted Standard with id {} does not exist",
@@ -234,8 +235,14 @@ pub fn transfer(
                 ))),
                 Err(err) => Err(err),
             }?;
-            todo!("Check if agt belongs to standards org? Maybe not necessary.");
-            // check for existing standards body, change standards body id
+            let standards_org = organization::get(state, agt.get_organization_id())?;
+            organization::check_type(
+                &standards_org,
+                proto::organization::Organization_Type::STANDARDS_BODY,
+            )?;
+            // update standards_body_id to their org_id
+            standard.set_organization_id(agt.get_organization_id().to_string());
+            state.set_standard(&standard.id, standard.clone())?;
         }
         proto::assertion::Assertion_Type::UNSET_TYPE => {
             return Err(ApplyError::InvalidTransaction(
@@ -611,8 +618,7 @@ mod tests {
         agent::create(&second_agent_action, &mut state, PUBLIC_KEY_2).unwrap();
 
         //make transfer assertion action
-        let factory_transfer_assertion_action =
-            make_transfer_assertion_action_factory(ASSERTION_ID_1);
+        let factory_transfer_assertion_action = make_transfer_assertion_action(ASSERTION_ID_1);
 
         assert!(transfer(&factory_transfer_assertion_action, &mut state, PUBLIC_KEY_2).is_ok());
 
@@ -625,5 +631,162 @@ mod tests {
         //check if the transfer agent now belongs to the factory
         let second_agent = agent::get(&mut state, PUBLIC_KEY_2).unwrap();
         assert_eq!(second_agent.get_organization_id(), FACTORY_ID);
+    }
+
+    #[test]
+    /// Test that TransferAssertionAction for a CERTIFICATE assertion is valid.
+    /// The certificate assertion should be removed from state.
+    fn test_transfer_assertion_action_for_certificate() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+
+        //add agent
+        let agent_action = make_agent_create_action();
+        agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        //add org
+        let org_action = make_organization_create_action(
+            INGESTION_ID,
+            proto::organization::Organization_Type::INGESTION,
+        );
+        organization::create(&org_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let standard_assert_action = make_assert_action_new_standard(ASSERTION_ID_1);
+        create(&standard_assert_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let factory_assert_action = make_assert_action_new_factory(ASSERTION_ID_2);
+        create(&factory_assert_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let cert_assert_action = make_assert_action_new_certificate(ASSERTION_ID_3);
+        create(&cert_assert_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let assertion = state
+            .get_assertion(ASSERTION_ID_3)
+            .expect("Failed to fetch Assertion")
+            .expect("No Assertion found");
+
+        assert_eq!(
+            assertion,
+            make_assertion(
+                PUBLIC_KEY_1,
+                ASSERTION_ID_3,
+                proto::assertion::Assertion_Type::CERTIFICATE,
+                CERT_ID
+            )
+        );
+
+        let cert = state
+            .get_certificate(CERT_ID)
+            .expect("Failed to fetch asserted certificate")
+            .expect("No asserted certificate found");
+
+        assert_eq!(cert, make_certificate(INGESTION_ID));
+
+        //add transfer agent
+        let second_agent_action = make_agent_create_action();
+        agent::create(&second_agent_action, &mut state, PUBLIC_KEY_2).unwrap();
+
+        //add transfer agent certifying body
+        let cert_org_action = make_organization_create_action(
+            CERT_ORG_ID,
+            proto::organization::Organization_Type::CERTIFYING_BODY,
+        );
+        organization::create(&cert_org_action, &mut state, PUBLIC_KEY_2).unwrap();
+
+        //make transfer assertion action
+        let transfer_assertion_action = make_transfer_assertion_action(ASSERTION_ID_3);
+        let result = transfer(&transfer_assertion_action, &mut state, PUBLIC_KEY_2);
+        println!("{:?}", result);
+        assert!(result.is_ok());
+
+        //check that certificate assertion is no longer in state
+        assert!(state
+            .get_assertion(ASSERTION_ID_3)
+            .expect("Failed to fetch Assertion")
+            .is_none());
+
+        //check if the cert now belongs to the transfer agent's cert org
+        let cert_after_transfer = state
+            .get_certificate(CERT_ID)
+            .expect("Failed to fetch certificate")
+            .expect("No certificate found");
+
+        assert_eq!(cert_after_transfer.get_certifying_body_id(), CERT_ORG_ID);
+    }
+
+    #[test]
+    /// Test that TransferAssertionAction for a STANDARD assertion is valid.
+    /// The standard assertion should be removed from state.
+    fn test_transfer_assertion_action_for_standard() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+
+        //add agent
+        let agent_action = make_agent_create_action();
+        agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        //add org
+        let org_action = make_organization_create_action(
+            INGESTION_ID,
+            proto::organization::Organization_Type::INGESTION,
+        );
+        organization::create(&org_action, &mut state, PUBLIC_KEY_1).unwrap();
+        let standard_assert_action = make_assert_action_new_standard(ASSERTION_ID_1);
+        create(&standard_assert_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let assertion = state
+            .get_assertion(ASSERTION_ID_1)
+            .expect("Failed to fetch Assertion")
+            .expect("No Assertion found");
+
+        assert_eq!(
+            assertion,
+            make_assertion(
+                PUBLIC_KEY_1,
+                ASSERTION_ID_1,
+                proto::assertion::Assertion_Type::STANDARD,
+                STANDARD_ID
+            )
+        );
+
+        let standard = state
+            .get_standard(STANDARD_ID)
+            .expect("Failed to fetch asserted standard")
+            .expect("No asserted standard found");
+
+        assert_eq!(standard, make_standard(INGESTION_ID));
+
+        //add transfer agent
+        let second_agent_action = make_agent_create_action();
+        agent::create(&second_agent_action, &mut state, PUBLIC_KEY_2).unwrap();
+
+        //add transfer agent standards body
+        let cert_org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        organization::create(&cert_org_action, &mut state, PUBLIC_KEY_2).unwrap();
+
+        //make transfer assertion action
+        let transfer_assertion_action = make_transfer_assertion_action(ASSERTION_ID_1);
+
+        assert!(transfer(&transfer_assertion_action, &mut state, PUBLIC_KEY_2).is_ok());
+
+        //check that standard assertion is no longer in state
+        assert!(state
+            .get_assertion(ASSERTION_ID_1)
+            .expect("Failed to fetch Assertion")
+            .is_none());
+
+        //check if the transfered standard now belongs to the second agent's org
+        let standard_after_transfer = state
+            .get_standard(STANDARD_ID)
+            .expect("Failed to fetch standard")
+            .expect("No standard found");
+
+        assert_eq!(
+            standard_after_transfer.get_organization_id(),
+            STANDARDS_BODY_ID
+        );
     }
 }
