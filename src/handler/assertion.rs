@@ -566,21 +566,24 @@ mod tests {
     }
 
     #[test]
-    /// Test that TransferAssertionAction for a FACTORY assertion is valid. The factory assertion should be removed from state.
+    /// Test that TransferAssertionAction for a FACTORY assertion is valid.
+    /// The factory assertion should be removed from state.
     fn test_transfer_assertion_action_for_factory() {
         let mut transaction_context = MockTransactionContext::default();
         let mut state = ConsensourceState::new(&mut transaction_context);
 
-        //add agent
+        //add ingestion agent
         let agent_action = make_agent_create_action();
         agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
 
-        //add org
+        //add ingestion org
         let org_action = make_organization_create_action(
             INGESTION_ID,
             proto::organization::Organization_Type::INGESTION,
         );
         organization::create(&org_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        //assert a factory organization
         let factory_assert_action = make_assert_action_new_factory(ASSERTION_ID_1);
         create(&factory_assert_action, &mut state, PUBLIC_KEY_1).unwrap();
 
@@ -640,23 +643,26 @@ mod tests {
         let mut transaction_context = MockTransactionContext::default();
         let mut state = ConsensourceState::new(&mut transaction_context);
 
-        //add agent
+        //add ingestion agent
         let agent_action = make_agent_create_action();
         agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
 
-        //add org
+        //add ingestion org
         let org_action = make_organization_create_action(
             INGESTION_ID,
             proto::organization::Organization_Type::INGESTION,
         );
         organization::create(&org_action, &mut state, PUBLIC_KEY_1).unwrap();
 
+        //assert a standard organization
         let standard_assert_action = make_assert_action_new_standard(ASSERTION_ID_1);
         create(&standard_assert_action, &mut state, PUBLIC_KEY_1).unwrap();
 
+        //assert a factory organization
         let factory_assert_action = make_assert_action_new_factory(ASSERTION_ID_2);
         create(&factory_assert_action, &mut state, PUBLIC_KEY_1).unwrap();
 
+        //assert a certificate organization
         let cert_assert_action = make_assert_action_new_certificate(ASSERTION_ID_3);
         create(&cert_assert_action, &mut state, PUBLIC_KEY_1).unwrap();
 
@@ -731,6 +737,8 @@ mod tests {
             proto::organization::Organization_Type::INGESTION,
         );
         organization::create(&org_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        //assert a standard organization
         let standard_assert_action = make_assert_action_new_standard(ASSERTION_ID_1);
         create(&standard_assert_action, &mut state, PUBLIC_KEY_1).unwrap();
 
