@@ -221,7 +221,7 @@ pub fn transfer(
                 &cert_org,
                 proto::organization::Organization_Type::CERTIFYING_BODY,
             )?;
-            //TODO: should there be a check to see if the auditor is accredited to this standard?
+            // TODO: should there be a check to see if the auditor is accredited to this standard?
             // update cert_body_id to their org_id
             certificate.set_certifying_body_id(agt.get_organization_id().to_string());
             state.set_certificate(&certificate.id, certificate.clone())?;
@@ -270,11 +270,11 @@ mod tests {
         let mut transaction_context = MockTransactionContext::default();
         let mut state = ConsensourceState::new(&mut transaction_context);
 
-        //add agent
+        // add agent
         let agent_action = make_agent_create_action();
         agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
 
-        //add org
+        // add org
         let org_action = make_organization_create_action(
             INGESTION_ID,
             proto::organization::Organization_Type::INGESTION,
@@ -319,11 +319,11 @@ mod tests {
         let mut transaction_context = MockTransactionContext::default();
         let mut state = ConsensourceState::new(&mut transaction_context);
 
-        //add agent
+        // add agent
         let agent_action = make_agent_create_action();
         agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
 
-        //add org
+        // add org
         let org_action = make_organization_create_action(
             INGESTION_ID,
             proto::organization::Organization_Type::INGESTION,
@@ -362,11 +362,11 @@ mod tests {
         let mut transaction_context = MockTransactionContext::default();
         let mut state = ConsensourceState::new(&mut transaction_context);
 
-        //add agent
+        // add agent
         let agent_action = make_agent_create_action();
         agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
 
-        //add org
+        // add org
         let org_action = make_organization_create_action(
             INGESTION_ID,
             proto::organization::Organization_Type::INGESTION,
@@ -399,11 +399,11 @@ mod tests {
         let mut transaction_context = MockTransactionContext::default();
         let mut state = ConsensourceState::new(&mut transaction_context);
 
-        //add agent
+        // add agent
         let agent_action = make_agent_create_action();
         agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
 
-        //add org
+        // add org
         let org_action = make_organization_create_action(
             INGESTION_ID,
             proto::organization::Organization_Type::INGESTION,
@@ -439,11 +439,11 @@ mod tests {
         let mut transaction_context = MockTransactionContext::default();
         let mut state = ConsensourceState::new(&mut transaction_context);
 
-        //add agent
+        // add agent
         let agent_action = make_agent_create_action();
         agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
 
-        //add org
+        // add org
         let org_action = make_organization_create_action(
             INGESTION_ID,
             proto::organization::Organization_Type::INGESTION,
@@ -480,11 +480,11 @@ mod tests {
         let mut transaction_context = MockTransactionContext::default();
         let mut state = ConsensourceState::new(&mut transaction_context);
 
-        //add agent
+        // add agent
         let agent_action = make_agent_create_action();
         agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
 
-        //add org
+        // add org
         let org_action = make_organization_create_action(
             INGESTION_ID,
             proto::organization::Organization_Type::INGESTION,
@@ -521,11 +521,11 @@ mod tests {
         let mut transaction_context = MockTransactionContext::default();
         let mut state = ConsensourceState::new(&mut transaction_context);
 
-        //add agent
+        // add agent
         let agent_action = make_agent_create_action();
         agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
 
-        //add org
+        // add org
         let org_action = make_organization_create_action(
             INGESTION_ID,
             proto::organization::Organization_Type::INGESTION,
@@ -572,18 +572,18 @@ mod tests {
         let mut transaction_context = MockTransactionContext::default();
         let mut state = ConsensourceState::new(&mut transaction_context);
 
-        //add ingestion agent
+        // add ingestion agent
         let agent_action = make_agent_create_action();
         agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
 
-        //add ingestion org
+        // add ingestion org
         let org_action = make_organization_create_action(
             INGESTION_ID,
             proto::organization::Organization_Type::INGESTION,
         );
         organization::create(&org_action, &mut state, PUBLIC_KEY_1).unwrap();
 
-        //assert a factory organization
+        // assert a factory organization
         let factory_assert_action = make_assert_action_new_factory(ASSERTION_ID_1);
         create(&factory_assert_action, &mut state, PUBLIC_KEY_1).unwrap();
 
@@ -616,22 +616,22 @@ mod tests {
             )
         );
 
-        //add transfer agent
+        // add transfer agent
         let second_agent_action = make_agent_create_action();
         agent::create(&second_agent_action, &mut state, PUBLIC_KEY_2).unwrap();
 
-        //make transfer assertion action
+        // make transfer assertion action
         let factory_transfer_assertion_action = make_transfer_assertion_action(ASSERTION_ID_1);
 
         assert!(transfer(&factory_transfer_assertion_action, &mut state, PUBLIC_KEY_2).is_ok());
 
-        //check that factory assertion is no longer in state
+        // check that factory assertion is no longer in state
         assert!(state
             .get_assertion(ASSERTION_ID_1)
             .expect("Failed to fetch Assertion")
             .is_none());
 
-        //check if the transfer agent now belongs to the factory
+        // check if the transfer agent now belongs to the factory
         let second_agent = agent::get(&mut state, PUBLIC_KEY_2).unwrap();
         assert_eq!(second_agent.get_organization_id(), FACTORY_ID);
     }
@@ -643,26 +643,26 @@ mod tests {
         let mut transaction_context = MockTransactionContext::default();
         let mut state = ConsensourceState::new(&mut transaction_context);
 
-        //add ingestion agent
+        // add ingestion agent
         let agent_action = make_agent_create_action();
         agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
 
-        //add ingestion org
+        // add ingestion org
         let org_action = make_organization_create_action(
             INGESTION_ID,
             proto::organization::Organization_Type::INGESTION,
         );
         organization::create(&org_action, &mut state, PUBLIC_KEY_1).unwrap();
 
-        //assert a standard organization
+        // assert a standard organization
         let standard_assert_action = make_assert_action_new_standard(ASSERTION_ID_1);
         create(&standard_assert_action, &mut state, PUBLIC_KEY_1).unwrap();
 
-        //assert a factory organization
+        // assert a factory organization
         let factory_assert_action = make_assert_action_new_factory(ASSERTION_ID_2);
         create(&factory_assert_action, &mut state, PUBLIC_KEY_1).unwrap();
 
-        //assert a certificate organization
+        // assert a certificate organization
         let cert_assert_action = make_assert_action_new_certificate(ASSERTION_ID_3);
         create(&cert_assert_action, &mut state, PUBLIC_KEY_1).unwrap();
 
@@ -688,30 +688,30 @@ mod tests {
 
         assert_eq!(cert, make_certificate(INGESTION_ID));
 
-        //add transfer agent
+        // add transfer agent
         let second_agent_action = make_agent_create_action();
         agent::create(&second_agent_action, &mut state, PUBLIC_KEY_2).unwrap();
 
-        //add transfer agent certifying body
+        // add transfer agent certifying body
         let cert_org_action = make_organization_create_action(
             CERT_ORG_ID,
             proto::organization::Organization_Type::CERTIFYING_BODY,
         );
         organization::create(&cert_org_action, &mut state, PUBLIC_KEY_2).unwrap();
 
-        //make transfer assertion action
+        // make transfer assertion action
         let transfer_assertion_action = make_transfer_assertion_action(ASSERTION_ID_3);
         let result = transfer(&transfer_assertion_action, &mut state, PUBLIC_KEY_2);
         println!("{:?}", result);
         assert!(result.is_ok());
 
-        //check that certificate assertion is no longer in state
+        // check that certificate assertion is no longer in state
         assert!(state
             .get_assertion(ASSERTION_ID_3)
             .expect("Failed to fetch Assertion")
             .is_none());
 
-        //check if the cert now belongs to the transfer agent's cert org
+        // check if the cert now belongs to the transfer agent's cert org
         let cert_after_transfer = state
             .get_certificate(CERT_ID)
             .expect("Failed to fetch certificate")
@@ -727,18 +727,18 @@ mod tests {
         let mut transaction_context = MockTransactionContext::default();
         let mut state = ConsensourceState::new(&mut transaction_context);
 
-        //add agent
+        // add agent
         let agent_action = make_agent_create_action();
         agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
 
-        //add org
+        // add org
         let org_action = make_organization_create_action(
             INGESTION_ID,
             proto::organization::Organization_Type::INGESTION,
         );
         organization::create(&org_action, &mut state, PUBLIC_KEY_1).unwrap();
 
-        //assert a standard organization
+        // assert a standard organization
         let standard_assert_action = make_assert_action_new_standard(ASSERTION_ID_1);
         create(&standard_assert_action, &mut state, PUBLIC_KEY_1).unwrap();
 
@@ -764,29 +764,29 @@ mod tests {
 
         assert_eq!(standard, make_standard(INGESTION_ID));
 
-        //add transfer agent
+        // add transfer agent
         let second_agent_action = make_agent_create_action();
         agent::create(&second_agent_action, &mut state, PUBLIC_KEY_2).unwrap();
 
-        //add transfer agent standards body
+        // add transfer agent standards body
         let cert_org_action = make_organization_create_action(
             STANDARDS_BODY_ID,
             proto::organization::Organization_Type::STANDARDS_BODY,
         );
         organization::create(&cert_org_action, &mut state, PUBLIC_KEY_2).unwrap();
 
-        //make transfer assertion action
+        // make transfer assertion action
         let transfer_assertion_action = make_transfer_assertion_action(ASSERTION_ID_1);
 
         assert!(transfer(&transfer_assertion_action, &mut state, PUBLIC_KEY_2).is_ok());
 
-        //check that standard assertion is no longer in state
+        // check that standard assertion is no longer in state
         assert!(state
             .get_assertion(ASSERTION_ID_1)
             .expect("Failed to fetch Assertion")
             .is_none());
 
-        //check if the transfered standard now belongs to the second agent's org
+        // check if the transfered standard now belongs to the second agent's org
         let standard_after_transfer = state
             .get_standard(STANDARD_ID)
             .expect("Failed to fetch standard")
