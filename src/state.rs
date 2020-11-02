@@ -588,6 +588,7 @@ mod tests {
     fn make_assertion(assertion_id: &str) -> Assertion {
         let mut assertion = Assertion::new();
         assertion.set_id(assertion_id.to_string());
+        assertion.set_address(make_assertion_address(assertion_id));
         assertion.set_assertor_pub_key("test".to_string());
         assertion.set_assertion_type(common::proto::assertion::Assertion_Type::FACTORY);
         assertion.set_object_id("test".to_string());

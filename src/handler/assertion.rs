@@ -6,6 +6,7 @@ cfg_if! {
   }
 }
 
+use common::addressing::make_assertion_address;
 use common::proto;
 use common::proto::organization::Organization_Authorization_Role::{ADMIN, TRANSACTOR};
 use state::ConsensourceState;
@@ -125,6 +126,7 @@ pub fn create(
     // Last step: add assertion to state that references the previous data
     let mut assertion = proto::assertion::Assertion::new();
     assertion.set_id(payload.get_assertion_id().to_string());
+    assertion.set_address(make_assertion_address(payload.get_assertion_id()));
     assertion.set_assertor_pub_key(signer_public_key.to_string());
     assertion.set_assertion_type(assertion_type);
     assertion.set_object_id(object_id.to_string());

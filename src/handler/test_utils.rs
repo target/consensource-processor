@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use common::addressing::make_assertion_address;
 use common::proto;
 use common::proto::organization::Organization_Authorization_Role::{ADMIN, TRANSACTOR};
 use common::proto::payload::*;
@@ -260,6 +261,7 @@ pub fn make_assertion(
 ) -> proto::assertion::Assertion {
     let mut new_assertion = proto::assertion::Assertion::new();
     new_assertion.set_id(assertion_id.to_string());
+    new_assertion.set_address(make_assertion_address(assertion_id));
     new_assertion.set_assertor_pub_key(pub_key.to_string());
     new_assertion.set_assertion_type(assertion_type);
     new_assertion.set_object_id(object_id.to_string());
