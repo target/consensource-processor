@@ -109,7 +109,7 @@ dependencies = [
 [[package]]
 name = "common"
 version = "0.1.0"
-source = "git+https://github.com/target/consensource-common.git?branch=master#80c8baff051db240113215993ef6401822040111"
+source = "git+https://github.com/target/consensource-common.git?branch=master#d9b36aa3f65103917f3e7ad35e7fe27ce7957047"
 dependencies = [
  "glob",
  "protobuf",
@@ -466,7 +466,7 @@ version = "2.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57408af2c106a7f08cc61e15be6a31e3ace8ea26f90dd1be1ad19abf1073d36a"
 dependencies = [
- "log 0.4.11",
+ "log 0.3.9",
  "which",
 ]
 
