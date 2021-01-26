@@ -81,10 +81,11 @@ pub fn issue(
 
             if request.get_status() != proto::request::Request_Status::IN_PROGRESS {
                 return Err(ApplyError::InvalidTransaction(format!(
-          "The request with id {} has its status set to {:?}. Only requests with status set to IN_PROGRESS can be certified.",
-          request.get_id(),
-          request.get_status()
-        )));
+                    "The request with id {} has its status set to {:?}.
+                  Only requests with status set to IN_PROGRESS can be certified.",
+                    request.get_id(),
+                    request.get_status()
+                )));
             }
 
             // update status of request
@@ -144,6 +145,78 @@ pub fn issue(
 
     // Put certificate in state
     state.set_certificate(payload.get_id(), new_certificate)?;
+
+    Ok(())
+}
+
+/// Updates an existing Certificate and updates state
+///
+/// ```
+/// # Errors
+/// Returns an error if
+///   - a certificate with the certificate id does not exists
+///   - an Agent with the signer public key does not exist
+///   - the Agent submitting the transaction is not associated with the organization
+///   - the Agent submitting the transaction is not authorized as a TRANSACTOR of the organization
+///   - the Organization the Agent is from a CertifyingBody or an Ingestion organization
+///   - the standard does not exist
+///   - if source is from request:
+///    - is not an INDEPENDENT source
+///   - the factory the certificate is for does not exist.
+///   - it fails to submit the new Certificate to state.
+/// ```
+pub fn update(
+    payload: &proto::payload::UpdateCertificateAction,
+    state: &mut ConsensourceState,
+    signer_public_key: &str,
+) -> Result<(), ApplyError> {
+    // Verify that certificate ID is not already associated with a Certificate object
+    let mut certificate = match state.get_certificate(payload.get_id()) {
+        Ok(Some(certificate)) => Ok(certificate),
+        Ok(None) => Err(ApplyError::InvalidTransaction(format!(
+            "Certificate {} does not exist",
+            payload.get_id()
+        ))),
+        Err(err) => Err(err),
+    }?;
+
+    // Validate signer public key and agent
+    let agt = agent::get(state, signer_public_key)?;
+
+    agent::has_organization(&agt)?;
+
+    // Validate org existence
+    let org = organization::get(state, certificate.get_certifying_body_id())?;
+
+    // Validate agent is authorized
+    organization::check_authorization(&org, signer_public_key, TRANSACTOR)?;
+
+    // Validate current valid_from/to dates
+    if certificate.get_valid_from() <= 0 {
+      return Err(ApplyError::InvalidTransaction(
+        "The valid_from date supplied was not valid".to_string(),
+      ));
+    }
+    if certificate.get_valid_to() <= 0 {
+      return Err(ApplyError::InvalidTransaction(
+        "The valid_to date supplied was not valid".to_string(),
+      ));
+    }
+
+    let valid_from = payload.get_valid_from();
+    let valid_to = payload.get_valid_to();
+    if valid_to < valid_from {
+        return Err(ApplyError::InvalidTransaction(
+            "Invalid dates. The valid_to date must be later than the valid_from date".to_string(),
+        ));
+    }
+
+    // Handle updates
+    certificate.set_valid_from(valid_from);
+    certificate.set_valid_to(valid_to);
+
+    // Update state
+    state.set_certificate(&certificate.clone().get_id(), certificate)?;
 
     Ok(())
 }

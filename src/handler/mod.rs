@@ -92,6 +92,9 @@ impl TransactionHandler for ConsensourceTransactionHandler {
             Action::IssueCertificate(payload) => {
                 certificate::issue(&payload, &mut state, signer_public_key)
             }
+            Action::UpdateCertificate(payload) => {
+                certificate::update(&payload, &mut state, signer_public_key)
+            }
             Action::CreateStandard(payload) => {
                 standard::create(&payload, &mut state, signer_public_key)
             }
