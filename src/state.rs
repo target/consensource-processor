@@ -51,13 +51,15 @@ macro_rules! interactor {
                 let state_data = context.get_state_entry(&address)?;
                 match state_data {
                     Some(data) => {
-                        let objects: $container_type =
-                            ::protobuf::parse_from_bytes(data.as_slice()).map_err(|_err| {
-                                ApplyError::InvalidTransaction(format!(
-                                    "Cannot deserialize {}",
-                                    ::std::any::type_name::<$container_type>()
-                                ))
-                            })?;
+                        let objects: $container_type = ::protobuf::Message::parse_from_bytes(
+                            data.as_slice(),
+                        )
+                        .map_err(|_err| {
+                            ApplyError::InvalidTransaction(format!(
+                                "Cannot deserialize {}",
+                                ::std::any::type_name::<$container_type>()
+                            ))
+                        })?;
                         for object in objects.get_entries() {
                             if object.$key_field == id {
                                 return Ok(Some(object.clone()));
@@ -77,7 +79,7 @@ macro_rules! interactor {
                 let state_data = context.get_state_entry(&address)?;
                 let mut objects: $container_type = match state_data {
                     Some(data) => {
-                        ::protobuf::parse_from_bytes(data.as_slice()).map_err(|_err| {
+                        ::protobuf::Message::parse_from_bytes(data.as_slice()).map_err(|_err| {
                             ApplyError::InvalidTransaction(format!(
                                 "Cannot deserialize {}",
                                 ::std::any::type_name::<$container_type>()
@@ -286,7 +288,7 @@ impl<'a> ConsensourceState<'a> {
         let address = make_assertion_address(assertion_id);
         let state_data = self.context.get_state_entry(&address)?;
         let mut assertions: AssertionContainer = match state_data {
-            Some(data) => protobuf::parse_from_bytes(data.as_slice()).map_err(|_err| {
+            Some(data) => protobuf::Message::parse_from_bytes(data.as_slice()).map_err(|_err| {
                 ApplyError::InvalidTransaction("Cannot deserialize Assertions".to_string())
             })?,
             None => AssertionContainer::new(),

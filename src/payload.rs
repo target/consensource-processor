@@ -149,7 +149,7 @@ fn unpack_data<T>(data: &[u8]) -> Result<T, ApplyError>
 where
     T: protobuf::Message,
 {
-    protobuf::parse_from_bytes(&data).map_err(|err| {
+    protobuf::Message::parse_from_bytes(&data).map_err(|err| {
         ApplyError::InvalidTransaction(format!(
             "Failed to unmarshal CertRegistryTransaction: {:?}",
             err
