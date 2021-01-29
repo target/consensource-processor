@@ -406,4 +406,141 @@ mod tests {
             )
         );
     }
+
+    #[test]
+    /// Test that if UpdateCertificateAction as a certifying body is valid an OK is returned and an existing Certificate is updated to state
+    fn test_update_certificate_as_cert_body_is_valid() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+
+        // add agent
+        let standard_agent_action = make_agent_create_action();
+        agent::create(&standard_agent_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        // add org
+        let standard_org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        organization::create(&standard_org_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        // add standard
+        let standard_action = make_standard_create_action();
+        standard::create(&standard_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        // add second agent
+        let factory_agent_action = make_agent_create_action();
+        agent::create(&factory_agent_action, &mut state, PUBLIC_KEY_2).unwrap();
+
+        // add factory org
+        let factory_org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        organization::create(&factory_org_action, &mut state, PUBLIC_KEY_2).unwrap();
+
+        // add third agent
+        let cert_agent_action = make_agent_create_action();
+        agent::create(&cert_agent_action, &mut state, PUBLIC_KEY_3).unwrap();
+
+        // add certifying org
+        let cert_org_action = make_organization_create_action(
+            CERT_ORG_ID,
+            proto::organization::Organization_Type::CERTIFYING_BODY,
+        );
+        organization::create(&cert_org_action, &mut state, PUBLIC_KEY_3).unwrap();
+
+        // accredit the cert org
+        let accredit_action = make_accredit_certifying_body_action();
+        standard::accredit_certifying_body(&accredit_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        // issue (create) certificate
+        let issue_action = make_issue_certificate_action();
+        assert!(issue(&issue_action, &mut state, PUBLIC_KEY_3).is_ok());
+
+        // update certificate
+        let update_action = make_update_certificate_action();
+        assert!(update(&update_action, &mut state, PUBLIC_KEY_3).is_ok());
+
+        let certificate = state
+            .get_certificate(CERT_ID)
+            .expect("Failed to fetch certificate")
+            .expect("No certificate found");
+
+        assert_eq!(certificate, make_updated_certificate(CERT_ORG_ID));
+    }
+
+    #[test]
+    /// Test that if UpdateCertificateAction as an ingestion org is valid an OK is returned and an existing Certificate is updated to state
+    fn test_update_certificate_as_ingestion_org_is_valid() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+
+        // add agent
+        let standard_agent_action = make_agent_create_action();
+        agent::create(&standard_agent_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        // add org
+        let standard_org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        organization::create(&standard_org_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        // add standard
+        let standard_action = make_standard_create_action();
+        standard::create(&standard_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        // add second agent
+        let factory_agent_action = make_agent_create_action();
+        agent::create(&factory_agent_action, &mut state, PUBLIC_KEY_2).unwrap();
+
+        // add factory org
+        let factory_org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        organization::create(&factory_org_action, &mut state, PUBLIC_KEY_2).unwrap();
+
+        // add third agent
+        let cert_agent_action = make_agent_create_action();
+        agent::create(&cert_agent_action, &mut state, PUBLIC_KEY_3).unwrap();
+
+        // add certifying org
+        let cert_org_action = make_organization_create_action(
+            CERT_ORG_ID,
+            proto::organization::Organization_Type::CERTIFYING_BODY,
+        );
+        organization::create(&cert_org_action, &mut state, PUBLIC_KEY_3).unwrap();
+
+        // accredit the cert org
+        let accredit_action = make_accredit_certifying_body_action();
+        standard::accredit_certifying_body(&accredit_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        // issue (create) certificate
+        let issue_action = make_issue_certificate_action();
+        assert!(issue(&issue_action, &mut state, PUBLIC_KEY_3).is_ok());
+
+        // add fourth agent
+        let ingestion_agent_action = make_agent_create_action();
+        agent::create(&ingestion_agent_action, &mut state, PUBLIC_KEY_4).unwrap();
+
+        // add ingestion org
+        let ingestion_org_action = make_organization_create_action(
+            INGESTION_ID,
+            proto::organization::Organization_Type::INGESTION,
+        );
+        organization::create(&ingestion_org_action, &mut state, PUBLIC_KEY_4).unwrap();
+
+        // update certificate
+        let update_action = make_update_certificate_action();
+        assert!(update(&update_action, &mut state, PUBLIC_KEY_4).is_ok());
+
+        let certificate = state
+            .get_certificate(CERT_ID)
+            .expect("Failed to fetch certificate")
+            .expect("No certificate found");
+
+        assert_eq!(certificate, make_updated_certificate(INGESTION_ID));
+    }
 }

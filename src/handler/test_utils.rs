@@ -13,6 +13,7 @@ use std::collections::HashMap;
 pub const PUBLIC_KEY_1: &str = "test_public_key_1";
 pub const PUBLIC_KEY_2: &str = "test_public_key_2";
 pub const PUBLIC_KEY_3: &str = "test_public_key_3";
+pub const PUBLIC_KEY_4: &str = "test_public_key_4";
 pub const CERT_ORG_ID: &str = "test_cert_org";
 pub const FACTORY_ID: &str = "test_factory";
 pub const STANDARDS_BODY_ID: &str = "test_standards_body";
@@ -184,6 +185,19 @@ pub fn make_certificate(cert_org_id: &str) -> proto::certificate::Certificate {
     new_certificate.set_standard_version("test".to_string());
     new_certificate.set_valid_from(1);
     new_certificate.set_valid_to(2);
+
+    new_certificate
+}
+
+pub fn make_updated_certificate(cert_org_id: &str) -> proto::certificate::Certificate {
+    let mut new_certificate = proto::certificate::Certificate::new();
+    new_certificate.set_id(CERT_ID.to_string());
+    new_certificate.set_certifying_body_id(cert_org_id.to_string());
+    new_certificate.set_factory_id(FACTORY_ID.to_string());
+    new_certificate.set_standard_id(STANDARD_ID.to_string());
+    new_certificate.set_standard_version("test".to_string());
+    new_certificate.set_valid_from(1);
+    new_certificate.set_valid_to(3);
 
     new_certificate
 }
@@ -362,6 +376,14 @@ pub fn make_issue_certificate_action_non_existent_standard() -> IssueCertificate
     issuance_action.set_factory_id(FACTORY_ID.to_string());
     issuance_action.set_valid_from(1);
     issuance_action.set_valid_to(2);
+    issuance_action
+}
+
+pub fn make_update_certificate_action() -> UpdateCertificateAction {
+    let mut issuance_action = UpdateCertificateAction::new();
+    issuance_action.set_id(CERT_ID.to_string());
+    issuance_action.set_valid_from(1);
+    issuance_action.set_valid_to(3);
     issuance_action
 }
 

@@ -530,6 +530,28 @@ mod tests {
     }
 
     #[test]
+    // Test creating a Update Certificate Action executes correctly
+    fn test_update_certificate_action_creation_ok() {
+        let mut new_payload = CertificateRegistryPayload::new();
+        new_payload.set_action(CertificateRegistryPayload_Action::UPDATE_CERTIFICATE);
+
+        let mut update = UpdateCertificateAction::new();
+        update.set_id("test".to_string());
+        update.set_valid_from(1);
+        update.set_valid_to(2);
+        new_payload.set_update_certificate(update.clone());
+
+        let bytes = new_payload.into_bytes().unwrap();
+
+        assert_eq!(
+            CertPayload::new(&bytes).unwrap(),
+            CertPayload {
+                action: Action::UpdateCertificate(update.clone())
+            }
+        );
+    }
+
+    #[test]
     // Test creating a Create Standard Action executes correctly
     fn test_create_standard_action_creation_ok() {
         let mut new_payload = CertificateRegistryPayload::new();
