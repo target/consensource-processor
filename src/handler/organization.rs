@@ -78,15 +78,22 @@ pub fn update(
     // Check agent
     let agent = agent::get(state, signer_public_key)?;
 
-    // Check agent's organization
-    agent::has_organization(&agent)?;
-
-    let mut organization = get(state, agent.get_organization_id())?;
+    // If no organization id is provided default to the agent's org
+    let mut organization = if payload.get_id().is_empty() {
+        // Check agent's organization
+        agent::has_organization(&agent)?;
+        get(state, agent.get_organization_id())?
+    } else {
+        get(state, payload.get_id())?
+    };
 
     // Validate agent is authorized
     check_authorization(&organization, signer_public_key, ADMIN)?;
 
     // Handle updates
+    if !payload.get_name().is_empty() {
+        organization.set_name(payload.get_name().to_string());
+    }
     if payload.has_address() {
         check_type(
             &organization,
@@ -103,7 +110,7 @@ pub fn update(
         ));
     }
 
-    state.set_organization(&agent.get_organization_id(), organization)?;
+    state.set_organization(&organization.clone().get_id(), organization)?;
     Ok(())
 }
 
@@ -207,6 +214,7 @@ pub fn make_proto(
 mod tests {
     use super::*;
 
+    use handler::assertion;
     use handler::test_utils::*;
 
     #[test]
@@ -397,6 +405,98 @@ mod tests {
                 ApplyError::InvalidTransaction(String::from(
                     "Agent is not associated with an organization: ",
                 ))
+            )
+        );
+    }
+
+    #[test]
+    /// Test that if UpdateOrganizationAction is valid and includes a new name
+    /// an OK is returned and the Organization is updated in state with the new name
+    fn test_update_organization_handler_with_name_change_valid() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+        //add agent
+        let agent_action = make_agent_create_action();
+        agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
+        //add org
+        let org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        create(&org_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let mut action = make_organization_update_action();
+        action.set_name("New name".to_string());
+
+        assert!(update(&action, &mut state, PUBLIC_KEY_1).is_ok());
+
+        let state_org = state
+            .get_organization(STANDARDS_BODY_ID)
+            .expect("Failed to fetch organization")
+            .expect("No organization found");
+
+        assert_eq!(state_org.get_name(), "New name".to_string());
+    }
+
+    #[test]
+    /// Test that if AssertAction for a new Factory is valid an Ok is returned and both an Assertion and an Organization are added to state
+    fn test_update_asserted_factory_handler_valid() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+
+        // add agent
+        let agent_action = make_agent_create_action();
+        agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        // add org
+        let org_action = make_organization_create_action(
+            INGESTION_ID,
+            proto::organization::Organization_Type::INGESTION,
+        );
+        create(&org_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let assert_action = make_assert_action_new_factory(ASSERTION_ID_1);
+        assert!(assertion::create(&assert_action, &mut state, PUBLIC_KEY_1).is_ok());
+
+        let assertion = state
+            .get_assertion(ASSERTION_ID_1)
+            .expect("Failed to fetch Assertion")
+            .expect("No Assertion found");
+
+        assert_eq!(
+            assertion,
+            make_assertion(
+                PUBLIC_KEY_1,
+                ASSERTION_ID_1,
+                proto::assertion::Assertion_Type::FACTORY,
+                FACTORY_ID
+            )
+        );
+
+        let mut update_action = make_organization_update_action();
+        update_action.set_id(FACTORY_ID.to_string());
+        // Also change the address of the factory
+        let mut address = proto::organization::Factory_Address::new();
+        address.set_street_line_1("test_change".to_string());
+        address.set_city("test_change".to_string());
+        address.set_state_province("test_change".to_string());
+        address.set_country("test_change".to_string());
+        address.set_postal_code("test_change".to_string());
+        update_action.set_address(address);
+
+        assert!(update(&update_action, &mut state, PUBLIC_KEY_1).is_ok());
+
+        let factory = state
+            .get_organization(FACTORY_ID)
+            .expect("Failed to fetch Asserted Factory")
+            .expect("No Asserted Factory found");
+
+        assert_eq!(
+            factory,
+            make_organization_update(
+                FACTORY_ID,
+                proto::organization::Organization_Type::FACTORY,
+                PUBLIC_KEY_1
             )
         );
     }
