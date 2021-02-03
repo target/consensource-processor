@@ -193,14 +193,14 @@ pub fn update(
 
     // Validate current valid_from/to dates
     if certificate.get_valid_from() <= 0 {
-      return Err(ApplyError::InvalidTransaction(
-        "The valid_from date supplied was not valid".to_string(),
-      ));
+        return Err(ApplyError::InvalidTransaction(
+            "The valid_from date supplied was not valid".to_string(),
+        ));
     }
     if certificate.get_valid_to() <= 0 {
-      return Err(ApplyError::InvalidTransaction(
-        "The valid_to date supplied was not valid".to_string(),
-      ));
+        return Err(ApplyError::InvalidTransaction(
+            "The valid_to date supplied was not valid".to_string(),
+        ));
     }
 
     let valid_from = payload.get_valid_from();
@@ -246,8 +246,8 @@ pub fn make_proto(
 mod tests {
     use super::*;
 
-    use handler::standard;
     use handler::test_utils::*;
+    use handler::{assertion, standard};
 
     #[test]
     /// Test that if IssueCertificateAction is valid an OK is returned and a new Certificate is added to state
@@ -477,64 +477,43 @@ mod tests {
         let mut state = ConsensourceState::new(&mut transaction_context);
 
         // add agent
-        let standard_agent_action = make_agent_create_action();
-        agent::create(&standard_agent_action, &mut state, PUBLIC_KEY_1).unwrap();
+        let agent_action = make_agent_create_action();
+        agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
 
         // add org
-        let standard_org_action = make_organization_create_action(
-            STANDARDS_BODY_ID,
-            proto::organization::Organization_Type::STANDARDS_BODY,
-        );
-        organization::create(&standard_org_action, &mut state, PUBLIC_KEY_1).unwrap();
-
-        // add standard
-        let standard_action = make_standard_create_action();
-        standard::create(&standard_action, &mut state, PUBLIC_KEY_1).unwrap();
-
-        // add second agent
-        let factory_agent_action = make_agent_create_action();
-        agent::create(&factory_agent_action, &mut state, PUBLIC_KEY_2).unwrap();
-
-        // add factory org
-        let factory_org_action = make_organization_create_action(
-            FACTORY_ID,
-            proto::organization::Organization_Type::FACTORY,
-        );
-        organization::create(&factory_org_action, &mut state, PUBLIC_KEY_2).unwrap();
-
-        // add third agent
-        let cert_agent_action = make_agent_create_action();
-        agent::create(&cert_agent_action, &mut state, PUBLIC_KEY_3).unwrap();
-
-        // add certifying org
-        let cert_org_action = make_organization_create_action(
-            CERT_ORG_ID,
-            proto::organization::Organization_Type::CERTIFYING_BODY,
-        );
-        organization::create(&cert_org_action, &mut state, PUBLIC_KEY_3).unwrap();
-
-        // accredit the cert org
-        let accredit_action = make_accredit_certifying_body_action();
-        standard::accredit_certifying_body(&accredit_action, &mut state, PUBLIC_KEY_1).unwrap();
-
-        // issue (create) certificate
-        let issue_action = make_issue_certificate_action();
-        assert!(issue(&issue_action, &mut state, PUBLIC_KEY_3).is_ok());
-
-        // add fourth agent
-        let ingestion_agent_action = make_agent_create_action();
-        agent::create(&ingestion_agent_action, &mut state, PUBLIC_KEY_4).unwrap();
-
-        // add ingestion org
-        let ingestion_org_action = make_organization_create_action(
+        let org_action = make_organization_create_action(
             INGESTION_ID,
             proto::organization::Organization_Type::INGESTION,
         );
-        organization::create(&ingestion_org_action, &mut state, PUBLIC_KEY_4).unwrap();
+        organization::create(&org_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let standard_assert_action = make_assert_action_new_standard(ASSERTION_ID_1);
+        assertion::create(&standard_assert_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let factory_assert_action = make_assert_action_new_factory(ASSERTION_ID_2);
+        assertion::create(&factory_assert_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let assert_action = make_assert_action_new_certificate(ASSERTION_ID_3);
+        assert!(assertion::create(&assert_action, &mut state, PUBLIC_KEY_1).is_ok());
+
+        let assertion = state
+            .get_assertion(ASSERTION_ID_3)
+            .expect("Failed to fetch Assertion")
+            .expect("No Assertion found");
+
+        assert_eq!(
+            assertion,
+            make_assertion(
+                PUBLIC_KEY_1,
+                ASSERTION_ID_3,
+                proto::assertion::Assertion_Type::CERTIFICATE,
+                CERT_ID
+            )
+        );
 
         // update certificate
         let update_action = make_update_certificate_action();
-        assert!(update(&update_action, &mut state, PUBLIC_KEY_4).is_ok());
+        assert!(update(&update_action, &mut state, PUBLIC_KEY_1).is_ok());
 
         let certificate = state
             .get_certificate(CERT_ID)

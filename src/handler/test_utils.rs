@@ -380,11 +380,11 @@ pub fn make_issue_certificate_action_non_existent_standard() -> IssueCertificate
 }
 
 pub fn make_update_certificate_action() -> UpdateCertificateAction {
-    let mut issuance_action = UpdateCertificateAction::new();
-    issuance_action.set_id(CERT_ID.to_string());
-    issuance_action.set_valid_from(1);
-    issuance_action.set_valid_to(3);
-    issuance_action
+    let mut update_action = UpdateCertificateAction::new();
+    update_action.set_id(CERT_ID.to_string());
+    update_action.set_valid_from(1);
+    update_action.set_valid_to(3);
+    update_action
 }
 
 pub fn make_standard_create_action() -> CreateStandardAction {
