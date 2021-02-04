@@ -192,12 +192,12 @@ pub fn update(
     organization::check_authorization(&org, signer_public_key, TRANSACTOR)?;
 
     // Validate current valid_from/to dates
-    if certificate.get_valid_from() <= 0 {
+    if certificate.get_valid_from() == 0 {
         return Err(ApplyError::InvalidTransaction(
             "The valid_from date supplied was not valid".to_string(),
         ));
     }
-    if certificate.get_valid_to() <= 0 {
+    if certificate.get_valid_to() == 0 {
         return Err(ApplyError::InvalidTransaction(
             "The valid_to date supplied was not valid".to_string(),
         ));
@@ -216,7 +216,7 @@ pub fn update(
     certificate.set_valid_to(valid_to);
 
     // Update state
-    state.set_certificate(&certificate.clone().get_id(), certificate)?;
+    state.set_certificate(&certificate.get_id(), certificate.clone())?;
 
     Ok(())
 }

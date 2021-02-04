@@ -110,7 +110,7 @@ pub fn update(
         ));
     }
 
-    state.set_organization(&organization.clone().get_id(), organization)?;
+    state.set_organization(&organization.get_id(), organization.clone())?;
     Ok(())
 }
 
