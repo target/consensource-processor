@@ -81,10 +81,11 @@ pub fn issue(
 
             if request.get_status() != proto::request::Request_Status::IN_PROGRESS {
                 return Err(ApplyError::InvalidTransaction(format!(
-          "The request with id {} has its status set to {:?}. Only requests with status set to IN_PROGRESS can be certified.",
-          request.get_id(),
-          request.get_status()
-        )));
+                    "The request with id {} has its status set to {:?}.
+                  Only requests with status set to IN_PROGRESS can be certified.",
+                    request.get_id(),
+                    request.get_status()
+                )));
             }
 
             // update status of request
@@ -148,6 +149,78 @@ pub fn issue(
     Ok(())
 }
 
+/// Updates an existing Certificate and updates state
+///
+/// ```
+/// # Errors
+/// Returns an error if
+///   - a certificate with the certificate id does not exists
+///   - an Agent with the signer public key does not exist
+///   - the Agent submitting the transaction is not associated with the organization
+///   - the Agent submitting the transaction is not authorized as a TRANSACTOR of the organization
+///   - the Organization the Agent is from a CertifyingBody or an Ingestion organization
+///   - the standard does not exist
+///   - if source is from request:
+///    - is not an INDEPENDENT source
+///   - the factory the certificate is for does not exist.
+///   - it fails to submit the new Certificate to state.
+/// ```
+pub fn update(
+    payload: &proto::payload::UpdateCertificateAction,
+    state: &mut ConsensourceState,
+    signer_public_key: &str,
+) -> Result<(), ApplyError> {
+    // Verify that certificate ID is not already associated with a Certificate object
+    let mut certificate = match state.get_certificate(payload.get_id()) {
+        Ok(Some(certificate)) => Ok(certificate),
+        Ok(None) => Err(ApplyError::InvalidTransaction(format!(
+            "Certificate {} does not exist",
+            payload.get_id()
+        ))),
+        Err(err) => Err(err),
+    }?;
+
+    // Validate signer public key and agent
+    let agt = agent::get(state, signer_public_key)?;
+
+    agent::has_organization(&agt)?;
+
+    // Validate org existence
+    let org = organization::get(state, certificate.get_certifying_body_id())?;
+
+    // Validate agent is authorized
+    organization::check_authorization(&org, signer_public_key, TRANSACTOR)?;
+
+    // Validate current valid_from/to dates
+    if certificate.get_valid_from() == 0 {
+        return Err(ApplyError::InvalidTransaction(
+            "The valid_from date supplied was not valid".to_string(),
+        ));
+    }
+    if certificate.get_valid_to() == 0 {
+        return Err(ApplyError::InvalidTransaction(
+            "The valid_to date supplied was not valid".to_string(),
+        ));
+    }
+
+    let valid_from = payload.get_valid_from();
+    let valid_to = payload.get_valid_to();
+    if valid_to < valid_from {
+        return Err(ApplyError::InvalidTransaction(
+            "Invalid dates. The valid_to date must be later than the valid_from date".to_string(),
+        ));
+    }
+
+    // Handle updates
+    certificate.set_valid_from(valid_from);
+    certificate.set_valid_to(valid_to);
+
+    // Update state
+    state.set_certificate(&certificate.get_id(), certificate.clone())?;
+
+    Ok(())
+}
+
 pub fn make_proto(
     payload: &proto::payload::IssueCertificateAction,
     certifying_body_id: &str,
@@ -173,8 +246,8 @@ pub fn make_proto(
 mod tests {
     use super::*;
 
-    use handler::standard;
     use handler::test_utils::*;
+    use handler::{assertion, standard};
 
     #[test]
     /// Test that if IssueCertificateAction is valid an OK is returned and a new Certificate is added to state
@@ -332,5 +405,121 @@ mod tests {
                 ))
             )
         );
+    }
+
+    #[test]
+    /// Test that if UpdateCertificateAction as a certifying body is valid an OK is returned and an existing Certificate is updated to state
+    fn test_update_certificate_as_cert_body_is_valid() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+
+        // add agent
+        let standard_agent_action = make_agent_create_action();
+        agent::create(&standard_agent_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        // add org
+        let standard_org_action = make_organization_create_action(
+            STANDARDS_BODY_ID,
+            proto::organization::Organization_Type::STANDARDS_BODY,
+        );
+        organization::create(&standard_org_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        // add standard
+        let standard_action = make_standard_create_action();
+        standard::create(&standard_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        // add second agent
+        let factory_agent_action = make_agent_create_action();
+        agent::create(&factory_agent_action, &mut state, PUBLIC_KEY_2).unwrap();
+
+        // add factory org
+        let factory_org_action = make_organization_create_action(
+            FACTORY_ID,
+            proto::organization::Organization_Type::FACTORY,
+        );
+        organization::create(&factory_org_action, &mut state, PUBLIC_KEY_2).unwrap();
+
+        // add third agent
+        let cert_agent_action = make_agent_create_action();
+        agent::create(&cert_agent_action, &mut state, PUBLIC_KEY_3).unwrap();
+
+        // add certifying org
+        let cert_org_action = make_organization_create_action(
+            CERT_ORG_ID,
+            proto::organization::Organization_Type::CERTIFYING_BODY,
+        );
+        organization::create(&cert_org_action, &mut state, PUBLIC_KEY_3).unwrap();
+
+        // accredit the cert org
+        let accredit_action = make_accredit_certifying_body_action();
+        standard::accredit_certifying_body(&accredit_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        // issue (create) certificate
+        let issue_action = make_issue_certificate_action();
+        assert!(issue(&issue_action, &mut state, PUBLIC_KEY_3).is_ok());
+
+        // update certificate
+        let update_action = make_update_certificate_action();
+        assert!(update(&update_action, &mut state, PUBLIC_KEY_3).is_ok());
+
+        let certificate = state
+            .get_certificate(CERT_ID)
+            .expect("Failed to fetch certificate")
+            .expect("No certificate found");
+
+        assert_eq!(certificate, make_updated_certificate(CERT_ORG_ID));
+    }
+
+    #[test]
+    /// Test that if UpdateCertificateAction as an ingestion org is valid an OK is returned and an existing Certificate is updated to state
+    fn test_update_certificate_as_ingestion_org_is_valid() {
+        let mut transaction_context = MockTransactionContext::default();
+        let mut state = ConsensourceState::new(&mut transaction_context);
+
+        // add agent
+        let agent_action = make_agent_create_action();
+        agent::create(&agent_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        // add org
+        let org_action = make_organization_create_action(
+            INGESTION_ID,
+            proto::organization::Organization_Type::INGESTION,
+        );
+        organization::create(&org_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let standard_assert_action = make_assert_action_new_standard(ASSERTION_ID_1);
+        assertion::create(&standard_assert_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let factory_assert_action = make_assert_action_new_factory(ASSERTION_ID_2);
+        assertion::create(&factory_assert_action, &mut state, PUBLIC_KEY_1).unwrap();
+
+        let assert_action = make_assert_action_new_certificate(ASSERTION_ID_3);
+        assert!(assertion::create(&assert_action, &mut state, PUBLIC_KEY_1).is_ok());
+
+        let assertion = state
+            .get_assertion(ASSERTION_ID_3)
+            .expect("Failed to fetch Assertion")
+            .expect("No Assertion found");
+
+        assert_eq!(
+            assertion,
+            make_assertion(
+                PUBLIC_KEY_1,
+                ASSERTION_ID_3,
+                proto::assertion::Assertion_Type::CERTIFICATE,
+                CERT_ID
+            )
+        );
+
+        // update certificate
+        let update_action = make_update_certificate_action();
+        assert!(update(&update_action, &mut state, PUBLIC_KEY_1).is_ok());
+
+        let certificate = state
+            .get_certificate(CERT_ID)
+            .expect("Failed to fetch certificate")
+            .expect("No certificate found");
+
+        assert_eq!(certificate, make_updated_certificate(INGESTION_ID));
     }
 }

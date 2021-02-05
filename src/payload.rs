@@ -22,6 +22,7 @@ pub enum Action {
     UpdateOrganization(payload::UpdateOrganizationAction),
     AuthorizeAgent(payload::AuthorizeAgentAction),
     IssueCertificate(payload::IssueCertificateAction),
+    UpdateCertificate(payload::UpdateCertificateAction),
     CreateStandard(payload::CreateStandardAction),
     UpdateStandard(payload::UpdateStandardAction),
     OpenRequest(payload::OpenRequestAction),
@@ -111,6 +112,9 @@ impl CertPayload {
             }
             payload::CertificateRegistryPayload_Action::ISSUE_CERTIFICATE => {
                 validate_issue_certificate(&payload.get_issue_certificate())
+            }
+            payload::CertificateRegistryPayload_Action::UPDATE_CERTIFICATE => {
+                validate_update_certificate(&payload.get_update_certificate())
             }
             payload::CertificateRegistryPayload_Action::OPEN_REQUEST_ACTION => {
                 validate_open_request(&payload.get_open_request_action())
@@ -230,7 +234,7 @@ fn validate_issue_certificate(
         payload::IssueCertificateAction_Source::UNSET_SOURCE => {
             return Err(ApplyError::InvalidTransaction(String::from(
                 "Issue Certificate source must be set. It can be
-                FROM_REQUEST if the there is an request associated with the
+                FROM_REQUEST if there is a request associated with the
                 action, or INDEPENDENT if there is not request associated.",
             )));
         }
@@ -256,6 +260,27 @@ fn validate_issue_certificate(
 
     Ok(Action::IssueCertificate(issue_cert.clone()))
 }
+
+fn validate_update_certificate(
+    update_cert: &payload::UpdateCertificateAction,
+) -> Result<Action, ApplyError> {
+    reject_empty!(update_cert, id)?;
+
+    if update_cert.get_valid_from() == 0 {
+        return Err(ApplyError::InvalidTransaction(String::from(
+            "Certificate's valid_from field is invalid",
+        )));
+    }
+
+    if update_cert.get_valid_to() == 0 {
+        return Err(ApplyError::InvalidTransaction(String::from(
+            "Certificate's valid_to field is invalid",
+        )));
+    }
+
+    Ok(Action::UpdateCertificate(update_cert.clone()))
+}
+
 fn validate_open_request(open_request: &payload::OpenRequestAction) -> Result<Action, ApplyError> {
     reject_empty!(open_request, id, standard_id)?;
     Ok(Action::OpenRequest(open_request.clone()))
@@ -500,6 +525,28 @@ mod tests {
             CertPayload::new(&bytes).unwrap(),
             CertPayload {
                 action: Action::IssueCertificate(issuance.clone())
+            }
+        );
+    }
+
+    #[test]
+    // Test creating a Update Certificate Action executes correctly
+    fn test_update_certificate_action_creation_ok() {
+        let mut new_payload = CertificateRegistryPayload::new();
+        new_payload.set_action(CertificateRegistryPayload_Action::UPDATE_CERTIFICATE);
+
+        let mut update = UpdateCertificateAction::new();
+        update.set_id("test".to_string());
+        update.set_valid_from(1);
+        update.set_valid_to(2);
+        new_payload.set_update_certificate(update.clone());
+
+        let bytes = new_payload.into_bytes().unwrap();
+
+        assert_eq!(
+            CertPayload::new(&bytes).unwrap(),
+            CertPayload {
+                action: Action::UpdateCertificate(update.clone())
             }
         );
     }
